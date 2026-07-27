@@ -346,7 +346,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             viewModel.refreshDependencyStatus()
             popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
+            repositionPopoverBelowStatusItem(sender)
         }
+    }
+
+    /// Con "ocultar y mostrar automáticamente la barra de menús" activo,
+    /// `NSPopover.show(relativeTo:of:)` calcula la posición como si la barra
+    /// tuviera su alto habitual en vez de partir del botón ya visible,
+    /// dejando un hueco del tamaño de esa barra entre el ícono y el globo.
+    /// Se corrige reubicando la ventana del globo a mano, usando el frame
+    /// real y actual del botón en coordenadas de pantalla.
+    private func repositionPopoverBelowStatusItem(_ sender: NSStatusBarButton) {
+        guard let buttonWindow = sender.window,
+              let popoverWindow = popover.contentViewController?.view.window else { return }
+        let buttonFrameOnScreen = buttonWindow.convertToScreen(sender.convert(sender.bounds, to: nil))
+        let popoverSize = popoverWindow.frame.size
+        let origin = NSPoint(
+            x: buttonFrameOnScreen.midX - popoverSize.width / 2,
+            y: buttonFrameOnScreen.minY - popoverSize.height
+        )
+        popoverWindow.setFrameOrigin(origin)
     }
 
     private func closePopover() {

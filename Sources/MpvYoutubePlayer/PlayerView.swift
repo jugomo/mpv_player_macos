@@ -5,7 +5,7 @@ struct PlayerView: View {
     @ObservedObject private var loc = LocalizationManager.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 18) {
             ZStack {
                 Text(loc.t(.appTitle))
                     .font(.headline)
@@ -25,7 +25,7 @@ struct PlayerView: View {
 
             Divider()
 
-            HStack(alignment: .top) {
+            HStack(alignment: .top, spacing: 10) {
                 Button {
                     viewModel.onOpenPlaylistRequested?()
                 } label: {
@@ -79,7 +79,7 @@ struct PlayerView: View {
                 dependencyBanner
             }
 
-            HStack {
+            HStack(spacing: 10) {
                 TextField(loc.t(.urlPlaceholder), text: $viewModel.urlText)
                     .textFieldStyle(.plain)
                     .onSubmit { viewModel.play() }
@@ -118,7 +118,7 @@ struct PlayerView: View {
                     .foregroundStyle(.red)
             }
 
-            HStack {
+            HStack(spacing: 10) {
                 Picker("", selection: $viewModel.quality) {
                     ForEach(VideoQuality.allCases) { quality in
                         Text(quality.displayName(in: loc.language)).tag(quality)

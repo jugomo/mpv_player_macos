@@ -31,6 +31,7 @@ enum LKey {
     case mpvNotInstalledError, installingPrefix, installationCompleted
     case homebrewNotInstalledErrorDescription
     case invalidURLError, mpvLaunchFailedPrefix
+    case cacheSectionTitle, cacheDurationLabel
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -123,5 +124,8 @@ final class LocalizationManager: ObservableObject {
         .homebrewNotInstalledErrorDescription: ("Homebrew no está instalado.", "Homebrew is not installed."),
         .invalidURLError: ("La URL no es válida.", "The URL is not valid."),
         .mpvLaunchFailedPrefix: ("No se pudo iniciar mpv: ", "Could not start mpv: "),
+
+        .cacheSectionTitle: ("Caché de vídeo", "Video cache"),
+        .cacheDurationLabel: ("Duración de caché", "Cache duration"),
     ]
 }

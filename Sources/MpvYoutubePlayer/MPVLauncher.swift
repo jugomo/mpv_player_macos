@@ -159,7 +159,7 @@ enum MPVLauncher {
         var args = [
             "--input-media-keys=no",
             "--input-ipc-server=\(socketPath)",
-        ] + quality.mpvArguments(for: trimmed)
+        ] + CacheSettingsManager.shared.mpvArguments + quality.mpvArguments(for: trimmed)
         // mpv no acumula --script-opts si el flag se repite: la última
         // aparición reemplaza a las anteriores. Por eso se fusionan todas
         // las claves en un único flag antes de lanzar el proceso.
