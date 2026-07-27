@@ -25,6 +25,24 @@ final class PlayerViewModel: ObservableObject {
     /// Set by the AppDelegate; called when the user wants to open the playlist screen.
     var onOpenPlaylistRequested: (() -> Void)?
 
+    /// Set by the AppDelegate; called when the user taps the help button to open the About/Help dialog.
+    var onShowAboutRequested: (() -> Void)?
+
+    /// Set by the AppDelegate; called once playback actually starts, with the
+    /// resolved title, so it can show a system-level "now playing" toast
+    /// (outside mpv's own window).
+    var onShowTitleToastRequested: ((String) -> Void)?
+
+    /// Set by the AppDelegate; called with `true` right as a video is
+    /// requested (mpv/yt-dlp still initializing) and `false` exactly when
+    /// mpv actually starts showing it, so it can show/hide a loading hint
+    /// next to the menu bar icon during that gap.
+    var onLoadingStateChanged: ((Bool) -> Void)?
+
+    /// Set by the AppDelegate; mirrors `isPaused` so it can blink the menu
+    /// bar icon between the normal icon and a "paused" icon while paused.
+    var onPauseStateChanged: ((Bool) -> Void)?
+
     private let playlistStore: PlaylistStore
 
     init(playlistStore: PlaylistStore) {
@@ -96,15 +114,31 @@ final class PlayerViewModel: ObservableObject {
         MPNowPlayingInfoCenter.default().playbackState = .playing
     }
 
-    private func handlePlaybackEnded() {
+    /// `handlePlaybackEnded`/`handlePlaybackReady` recorre el token de la
+    /// petición `play()` que las originó: al pulsar next/previous rápido, el
+    /// proceso mpv anterior se termina pero su aviso de fin llega de forma
+    /// asíncrona, después de que ya se haya marcado como "cargando" el nuevo.
+    /// Sin este chequeo, ese aviso tardío ocultaría el hint de carga de la
+    /// reproducción nueva antes de tiempo.
+    private var loadingToken: Int = 0
+
+    private func handlePlaybackEnded(token: Int) {
         currentlyPlayingItemID = nil
         isPaused = false
+        onPauseStateChanged?(false)
+        // Salvaguarda: si mpv termina antes de llegar a mostrar vídeo (p.ej.
+        // el usuario cierra su ventana durante la carga), el hint de carga no
+        // se quedaría colgado para siempre.
+        if token == loadingToken {
+            onLoadingStateChanged?(false)
+        }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().playbackState = .stopped
     }
 
     private func handlePauseChanged(_ paused: Bool) {
         isPaused = paused
+        onPauseStateChanged?(paused)
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         info[MPNowPlayingInfoPropertyPlaybackRate] = paused ? 0.0 : 1.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
@@ -141,29 +175,43 @@ final class PlayerViewModel: ObservableObject {
     func play(quality overrideQuality: VideoQuality? = nil) {
         errorMessage = nil
         guard let mpvPath = status.mpvPath else {
-            errorMessage = "mpv no está instalado."
+            errorMessage = LocalizationManager.shared.t(.mpvNotInstalledError)
             return
         }
         let effectiveQuality = overrideQuality ?? quality
         let targetURLString = urlText
+        loadingToken += 1
+        let requestToken = loadingToken
+        onLoadingStateChanged?(true)
         do {
             try MPVLauncher.play(
                 urlString: targetURLString,
                 quality: effectiveQuality,
                 mpvPath: mpvPath,
                 ytdlpPath: status.ytdlpPath,
-                onPlaybackEnded: { [weak self] in self?.handlePlaybackEnded() },
+                onPlaybackEnded: { [weak self] in self?.handlePlaybackEnded(token: requestToken) },
                 onPauseChanged: { [weak self] paused in self?.handlePauseChanged(paused) },
-                onTitleResolved: { [weak self] title in self?.handleTitleResolved(title) }
+                onTitleResolved: { [weak self] title in self?.handleTitleResolved(title) },
+                onPlaybackReady: { [weak self] title in
+                    guard let self else { return }
+                    if requestToken == self.loadingToken {
+                        self.onLoadingStateChanged?(false)
+                    }
+                    self.onShowTitleToastRequested?(title)
+                }
             )
             playlistStore.add(urlString: targetURLString, quality: effectiveQuality)
             let playingItem = playlistStore.items.first(where: { $0.urlString == targetURLString })
             currentlyPlayingItemID = playingItem?.id
             isPaused = false
+            onPauseStateChanged?(false)
             updateNowPlayingInfo(title: playingItem?.title ?? targetURLString)
             urlText = ""
             onPlaybackStarted?()
         } catch {
+            if requestToken == loadingToken {
+                onLoadingStateChanged?(false)
+            }
             errorMessage = error.localizedDescription
         }
     }
@@ -189,6 +237,38 @@ final class PlayerViewModel: ObservableObject {
         !urlText.trimmingCharacters(in: .whitespaces).isEmpty || !playlistStore.items.isEmpty
     }
 
+    /// Whether mpv currently has something loaded and unpaused, used to
+    /// decide whether the header play button should show as "pause".
+    var isCurrentlyPlaying: Bool {
+        currentlyPlayingItemID != nil && !isPaused
+    }
+
+    /// Title of the item currently loaded in mpv, if any, falling back to
+    /// its URL if mpv hasn't resolved the real title yet.
+    var currentlyPlayingTitle: String? {
+        guard let id = currentlyPlayingItemID else { return nil }
+        guard let item = playlistStore.items.first(where: { $0.id == id }) else { return nil }
+        return item.title ?? item.urlString
+    }
+
+    var canPlayNext: Bool {
+        playlistStore.item(after: currentlyPlayingItemID) != nil
+    }
+
+    var canPlayPrevious: Bool {
+        playlistStore.item(before: currentlyPlayingItemID) != nil
+    }
+
+    /// Action for the header's primary play/pause button: toggles pause if
+    /// something is already loaded in mpv, otherwise starts playback.
+    func togglePrimaryPlayPause() {
+        if currentlyPlayingItemID != nil {
+            MPVLauncher.togglePause()
+        } else {
+            playPrimary()
+        }
+    }
+
     func installMissingDependencies() {
         guard let brewPath = status.brewPath else {
             HomebrewInstaller.openTerminalForHomebrewInstall()
@@ -201,7 +281,7 @@ final class PlayerViewModel: ObservableObject {
         guard !packages.isEmpty else { return }
 
         isInstalling = true
-        installProgress = "Instalando \(packages.joined(separator: ", "))…"
+        installProgress = LocalizationManager.shared.t(.installingPrefix) + packages.joined(separator: ", ") + "…"
         errorMessage = nil
 
         HomebrewInstaller.install(
@@ -216,7 +296,7 @@ final class PlayerViewModel: ObservableObject {
                 self.isInstalling = false
                 switch result {
                 case .success:
-                    self.installProgress = "Instalación completada."
+                    self.installProgress = LocalizationManager.shared.t(.installationCompleted)
                     self.refreshDependencyStatus()
                 case .failure(let error):
                     self.errorMessage = error.localizedDescription

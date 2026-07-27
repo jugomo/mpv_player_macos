@@ -7,6 +7,7 @@ private let playlistUTType = UTType(filenameExtension: "pl") ?? .json
 struct PlaylistView: View {
     @ObservedObject var store: PlaylistStore
     @ObservedObject var viewModel: PlayerViewModel
+    @ObservedObject private var loc = LocalizationManager.shared
     var onItemPlayed: (() -> Void)?
     @State private var errorMessage: String?
 
@@ -20,11 +21,11 @@ struct PlaylistView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("Playlist")
+                Text(loc.t(.playlistTitle))
                     .font(.headline)
                 Spacer()
-                Button("Importar…", action: importPlaylist)
-                Button("Exportar…", action: exportPlaylist)
+                Button(loc.t(.importEllipsis), action: importPlaylist)
+                Button(loc.t(.exportEllipsis), action: exportPlaylist)
                     .disabled(store.items.isEmpty)
             }
 
@@ -41,7 +42,7 @@ struct PlaylistView: View {
 
             if store.items.isEmpty {
                 Spacer()
-                Text("Aún no se ha reproducido ningún vídeo.")
+                Text(loc.t(.noVideosYet))
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .center)
@@ -49,6 +50,7 @@ struct PlaylistView: View {
             } else {
                 List {
                     ForEach(store.items) { item in
+                        let isPlaying = item.id == viewModel.currentlyPlayingItemID
                         HStack(alignment: .firstTextBaseline) {
                             Button {
                                 viewModel.play(item: item)
@@ -57,12 +59,20 @@ struct PlaylistView: View {
                                 Image(systemName: "play.circle.fill")
                             }
                             .buttonStyle(.borderless)
-                            .help("Reproducir")
+                            .help(loc.t(.playTooltip))
 
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.title ?? item.urlString)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
+                                HStack(spacing: 4) {
+                                    if isPlaying {
+                                        Image(systemName: "speaker.wave.2.fill")
+                                            .foregroundStyle(Color.accentColor)
+                                            .font(.caption)
+                                    }
+                                    Text(item.title ?? item.urlString)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                        .fontWeight(isPlaying ? .semibold : .regular)
+                                }
                                 Text(Self.dateFormatter.string(from: item.addedAt))
                                     .font(.caption2)
                                     .foregroundStyle(.secondary)
@@ -72,18 +82,18 @@ struct PlaylistView: View {
                                 viewModel.play(item: item)
                                 onItemPlayed?()
                             }
-                            .help("Doble clic para reproducir")
+                            .help(loc.t(.doubleClickToPlay))
 
                             Spacer()
 
                             Picker("", selection: qualityBinding(for: item)) {
                                 ForEach(VideoQuality.allCases) { quality in
-                                    Text(quality.rawValue).tag(quality)
+                                    Text(quality.displayName(in: loc.language)).tag(quality)
                                 }
                             }
                             .labelsHidden()
                             .frame(width: 120)
-                            .help("Calidad al reproducir")
+                            .help(loc.t(.qualityTooltip))
 
                             Button {
                                 copyToClipboard(item.urlString)
@@ -91,7 +101,7 @@ struct PlaylistView: View {
                                 Image(systemName: "doc.on.doc")
                             }
                             .buttonStyle(.borderless)
-                            .help("Copiar URL al portapapeles")
+                            .help(loc.t(.copyUrlTooltip))
 
                             Button {
                                 store.remove(item)
@@ -99,9 +109,12 @@ struct PlaylistView: View {
                                 Image(systemName: "trash")
                             }
                             .buttonStyle(.borderless)
-                            .help("Eliminar de la playlist")
+                            .help(loc.t(.removeFromPlaylistTooltip))
                         }
                         .padding(.vertical, 2)
+                        .padding(.horizontal, 4)
+                        .background(isPlaying ? Color.accentColor.opacity(0.15) : Color.clear)
+                        .cornerRadius(4)
                     }
                 }
                 .listStyle(.inset)
@@ -132,7 +145,7 @@ struct PlaylistView: View {
         do {
             try store.export(to: url)
         } catch {
-            errorMessage = "No se pudo exportar la playlist: \(error.localizedDescription)"
+            errorMessage = loc.t(.exportFailedPrefix) + error.localizedDescription
         }
     }
 
@@ -146,7 +159,7 @@ struct PlaylistView: View {
         do {
             try store.importItems(from: url)
         } catch {
-            errorMessage = "No se pudo importar la playlist: \(error.localizedDescription)"
+            errorMessage = loc.t(.importFailedPrefix) + error.localizedDescription
         }
     }
 }

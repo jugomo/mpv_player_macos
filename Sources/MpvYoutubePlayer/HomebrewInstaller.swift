@@ -7,7 +7,7 @@ enum HomebrewInstallerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .brewNotFound:
-            return "Homebrew no está instalado."
+            return LocalizationManager.shared.t(.homebrewNotInstalledErrorDescription)
         case .processFailed(let output):
             return "brew install falló:\n\(output)"
         }

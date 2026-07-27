@@ -12,6 +12,22 @@ enum VideoQuality: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    /// Etiqueta mostrada en la interfaz según el idioma elegido en Ajustes.
+    /// Distinta de `rawValue`, que se usa para persistir la calidad en la
+    /// playlist guardada en disco y no debe cambiar con el idioma.
+    func displayName(in language: AppLanguage) -> String {
+        switch self {
+        case .auto: return language == .es ? "Auto (mejor)" : "Auto (best)"
+        case .q2160: return "2160p (4K)"
+        case .q1440: return "1440p"
+        case .q1080: return "1080p"
+        case .q720: return "720p"
+        case .q480: return "480p"
+        case .q360: return "360p"
+        case .audioOnly: return language == .es ? "Solo audio" : "Audio only"
+        }
+    }
+
     /// Selector de formato para yt-dlp (usado por mpv vía ytdl_hook).
     private var ytdlFormat: String {
         switch self {
@@ -73,9 +89,9 @@ enum MPVLauncherError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "La URL no es válida."
+            return LocalizationManager.shared.t(.invalidURLError)
         case .launchFailed(let message):
-            return "No se pudo iniciar mpv: \(message)"
+            return LocalizationManager.shared.t(.mpvLaunchFailedPrefix) + message
         }
     }
 }
@@ -99,6 +115,11 @@ enum MPVLauncher {
     /// already fetches it via ytdl_hook to load the video), so playback
     /// never has to wait on a second, redundant yt-dlp invocation just to
     /// display a title.
+    ///
+    /// `onPlaybackReady` fires once, with that same title, at the moment
+    /// mpv actually starts showing the video (not when the title merely
+    /// resolves, which can happen a couple seconds before the window is
+    /// visible) — the right moment for a "now playing" toast.
     static func play(
         urlString: String,
         quality: VideoQuality,
@@ -106,7 +127,8 @@ enum MPVLauncher {
         ytdlpPath: String?,
         onPlaybackEnded: (() -> Void)? = nil,
         onPauseChanged: ((Bool) -> Void)? = nil,
-        onTitleResolved: ((String) -> Void)? = nil
+        onTitleResolved: ((String) -> Void)? = nil,
+        onPlaybackReady: ((String) -> Void)? = nil
     ) throws {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed),
@@ -134,7 +156,10 @@ enum MPVLauncher {
         // comandos (pausar/reanudar desde las teclas multimedia o el Centro
         // de Control) es a través de este socket JSON IPC.
         let socketPath = "/tmp/mpvytp-\(UUID().uuidString.prefix(8)).sock"
-        var args = ["--input-media-keys=no", "--input-ipc-server=\(socketPath)"] + quality.mpvArguments(for: trimmed)
+        var args = [
+            "--input-media-keys=no",
+            "--input-ipc-server=\(socketPath)",
+        ] + quality.mpvArguments(for: trimmed)
         // mpv no acumula --script-opts si el flag se repite: la última
         // aparición reemplaza a las anteriores. Por eso se fusionan todas
         // las claves en un único flag antes de lanzar el proceso.
@@ -190,7 +215,7 @@ enum MPVLauncher {
             processesLock.lock()
             runningProcesses.append(process)
             processesLock.unlock()
-            connectIPC(socketPath: socketPath, onPauseChanged: onPauseChanged, onTitleResolved: onTitleResolved)
+            connectIPC(socketPath: socketPath, onPauseChanged: onPauseChanged, onTitleResolved: onTitleResolved, onPlaybackReady: onPlaybackReady)
         } catch {
             throw MPVLauncherError.launchFailed(error.localizedDescription)
         }
@@ -202,11 +227,13 @@ enum MPVLauncher {
         socketPath: String,
         onPauseChanged: ((Bool) -> Void)?,
         onTitleResolved: ((String) -> Void)?,
+        onPlaybackReady: ((String) -> Void)?,
         attempt: Int = 0
     ) {
         if let client = MPVIPCClient(socketPath: socketPath) {
             client.onPauseChanged = onPauseChanged
             client.onMediaTitleChanged = onTitleResolved
+            client.onPlaybackReady = onPlaybackReady
             client.observePauseProperty()
             client.observeMediaTitleProperty()
             processesLock.lock()
@@ -214,7 +241,7 @@ enum MPVLauncher {
             processesLock.unlock()
         } else if attempt < 30 {
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
-                connectIPC(socketPath: socketPath, onPauseChanged: onPauseChanged, onTitleResolved: onTitleResolved, attempt: attempt + 1)
+                connectIPC(socketPath: socketPath, onPauseChanged: onPauseChanged, onTitleResolved: onTitleResolved, onPlaybackReady: onPlaybackReady, attempt: attempt + 1)
             }
         }
     }

@@ -15,6 +15,16 @@ final class MPVIPCClient {
     /// solo para mostrarlo, que competía por red/CPU con la resolución de
     /// mpv y retrasaba el inicio de la reproducción.
     var onMediaTitleChanged: ((String) -> Void)?
+    /// Se dispara una única vez por reproducción, en el momento en que mpv
+    /// realmente empieza a mostrar el vídeo (evento `playback-restart`), con
+    /// el título ya resuelto. Lo usa la app para mostrar un aviso tipo toast
+    /// a nivel de macOS (fuera de la ventana de mpv).
+    var onPlaybackReady: ((String) -> Void)?
+    private var hasNotifiedPlaybackReady = false
+    /// Último título recibido vía `media-title`, cacheado para poder
+    /// entregarlo en `onPlaybackReady` (ver `"playback-restart"` en
+    /// `handle(_:)`).
+    private var latestMediaTitle: String?
 
     init?(socketPath: String) {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -59,18 +69,37 @@ final class MPVIPCClient {
             buffer.removeSubrange(buffer.startIndex...newlineIndex)
             guard !lineData.isEmpty,
                   let object = try? JSONSerialization.jsonObject(with: lineData) as? [String: Any],
-                  object["event"] as? String == "property-change",
-                  let name = object["name"] as? String else { continue }
-            switch name {
-            case "pause":
-                guard let paused = object["data"] as? Bool else { continue }
-                DispatchQueue.main.async { [weak self] in
-                    self?.onPauseChanged?(paused)
+                  let event = object["event"] as? String else { continue }
+            switch event {
+            case "property-change":
+                guard let name = object["name"] as? String else { continue }
+                switch name {
+                case "pause":
+                    guard let paused = object["data"] as? Bool else { continue }
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onPauseChanged?(paused)
+                    }
+                case "media-title":
+                    guard let title = object["data"] as? String, !title.isEmpty else { continue }
+                    latestMediaTitle = title
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onMediaTitleChanged?(title)
+                    }
+                default:
+                    break
                 }
-            case "media-title":
-                guard let title = object["data"] as? String, !title.isEmpty else { continue }
-                DispatchQueue.main.async { [weak self] in
-                    self?.onMediaTitleChanged?(title)
+            case "playback-restart":
+                // Momento en que mpv realmente empieza a mostrar el vídeo
+                // (tras la carga/buffering inicial). Si se disparara antes,
+                // p.ej. en cuanto llega el primer `media-title` (que puede
+                // resolverse segundos antes de que la ventana de mpv sea
+                // visible), el aviso ya habría expirado para cuando el
+                // usuario ve la ventana.
+                if !hasNotifiedPlaybackReady, let title = latestMediaTitle {
+                    hasNotifiedPlaybackReady = true
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onPlaybackReady?(title)
+                    }
                 }
             default:
                 break

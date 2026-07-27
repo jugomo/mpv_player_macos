@@ -2,30 +2,75 @@ import SwiftUI
 
 struct PlayerView: View {
     @ObservedObject var viewModel: PlayerViewModel
+    @ObservedObject private var loc = LocalizationManager.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("mpv YouTube Player")
-                .font(.headline)
+            ZStack {
+                Text(loc.t(.appTitle))
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, alignment: .center)
+
+                HStack {
+                    Spacer()
+                    Button {
+                        viewModel.onShowAboutRequested?()
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(loc.t(.help))
+                }
+            }
 
             Divider()
 
-            HStack {
-                Button("Playlist") {
-                    viewModel.onOpenPlaylistRequested?()
-                }
-                .font(.caption)
-
-                Spacer()
-
+            HStack(alignment: .top) {
                 Button {
-                    viewModel.playPrimary()
+                    viewModel.onOpenPlaylistRequested?()
                 } label: {
-                    Image(systemName: "play.circle.fill")
+                    Image(systemName: "list.bullet")
                 }
                 .buttonStyle(.borderless)
-                .disabled(!viewModel.status.isReady || !viewModel.canPlayPrimary)
-                .help("Reproducir")
+                .help(loc.t(.playlist))
+
+                Button {
+                    viewModel.playPrevious()
+                } label: {
+                    Image(systemName: "backward.end.fill")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!viewModel.status.isReady || !viewModel.canPlayPrevious)
+                .help(loc.t(.previousTooltip))
+
+                Button {
+                    viewModel.togglePrimaryPlayPause()
+                } label: {
+                    Image(systemName: viewModel.isCurrentlyPlaying ? "pause.circle.fill" : "play.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!viewModel.status.isReady || (viewModel.currentlyPlayingItemID == nil && !viewModel.canPlayPrimary))
+                .help(viewModel.isCurrentlyPlaying ? loc.t(.pauseTooltip) : loc.t(.playTooltip))
+
+                Button {
+                    viewModel.playNext()
+                } label: {
+                    Image(systemName: "forward.end.fill")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!viewModel.status.isReady || !viewModel.canPlayNext)
+                .help(loc.t(.nextTooltip))
+
+                if let title = viewModel.currentlyPlayingTitle {
+                    Text(title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(3)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Spacer()
+                }
             }
 
             Divider()
@@ -35,7 +80,7 @@ struct PlayerView: View {
             }
 
             HStack {
-                TextField("https://www.youtube.com/watch?v=…", text: $viewModel.urlText)
+                TextField(loc.t(.urlPlaceholder), text: $viewModel.urlText)
                     .textFieldStyle(.plain)
                     .onSubmit { viewModel.play() }
                     .padding(.leading, 6)
@@ -64,7 +109,7 @@ struct PlayerView: View {
                 } label: {
                     Image(systemName: "doc.on.clipboard")
                 }
-                .help("Pegar del portapapeles")
+                .help(loc.t(.pasteFromClipboard))
             }
 
             if let errorMessage = viewModel.errorMessage {
@@ -76,19 +121,19 @@ struct PlayerView: View {
             HStack {
                 Picker("", selection: $viewModel.quality) {
                     ForEach(VideoQuality.allCases) { quality in
-                        Text(quality.rawValue).tag(quality)
+                        Text(quality.displayName(in: loc.language)).tag(quality)
                     }
                 }
                 .labelsHidden()
 
                 Spacer()
 
-                Button("Solo audio") {
+                Button(loc.t(.audioOnly)) {
                     viewModel.play(quality: .audioOnly)
                 }
                 .disabled(!viewModel.status.isReady || viewModel.urlText.trimmingCharacters(in: .whitespaces).isEmpty)
 
-                Button("Reproducir") {
+                Button(loc.t(.playButton)) {
                     viewModel.play()
                 }
                 .keyboardShortcut(.defaultAction)
@@ -107,11 +152,11 @@ struct PlayerView: View {
     private var dependencyBanner: some View {
         VStack(alignment: .leading, spacing: 6) {
             if !viewModel.status.isMpvInstalled {
-                Label("mpv no está instalado", systemImage: "exclamationmark.triangle.fill")
+                Label(loc.t(.mpvNotInstalled), systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
             }
             if !viewModel.status.isYtdlpInstalled {
-                Label("yt-dlp no está instalado", systemImage: "exclamationmark.triangle.fill")
+                Label(loc.t(.ytdlpNotInstalled), systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
             }
 
@@ -124,15 +169,15 @@ struct PlayerView: View {
                         .lineLimit(1)
                 }
             } else if !viewModel.status.isBrewInstalled {
-                Text("Homebrew tampoco está instalado.")
+                Text(loc.t(.homebrewNotInstalledEither))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Button("Abrir Terminal para instalar Homebrew") {
+                Button(loc.t(.openTerminalToInstallHomebrew)) {
                     viewModel.installMissingDependencies()
                 }
                 .font(.caption)
             } else {
-                Button("Instalar con Homebrew") {
+                Button(loc.t(.installWithHomebrew)) {
                     viewModel.installMissingDependencies()
                 }
                 .font(.caption)
