@@ -5,47 +5,66 @@ struct PlayerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Text("mpv YouTube Player")
+                .font(.headline)
+
+            Divider()
+
             HStack {
-                Text("mpv YouTube Player")
-                    .font(.headline)
-                Spacer()
                 Button("Playlist") {
                     viewModel.onOpenPlaylistRequested?()
                 }
                 .font(.caption)
+
+                Spacer()
+
+                Button {
+                    viewModel.playPrimary()
+                } label: {
+                    Image(systemName: "play.circle.fill")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!viewModel.status.isReady || !viewModel.canPlayPrimary)
+                .help("Reproducir")
             }
+
+            Divider()
 
             if !viewModel.status.isReady {
                 dependencyBanner
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("URL de YouTube")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                HStack {
-                    TextField("https://www.youtube.com/watch?v=…", text: $viewModel.urlText)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit { viewModel.play() }
-                    Button {
-                        viewModel.pasteFromClipboard()
-                    } label: {
-                        Image(systemName: "doc.on.clipboard")
+            HStack {
+                TextField("https://www.youtube.com/watch?v=…", text: $viewModel.urlText)
+                    .textFieldStyle(.plain)
+                    .onSubmit { viewModel.play() }
+                    .padding(.leading, 6)
+                    .padding(.trailing, 24)
+                    .padding(.vertical, 3)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 6)
+                            .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
                     }
-                    .help("Pegar del portapapeles")
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Calidad")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Picker("", selection: $viewModel.quality) {
-                    ForEach(VideoQuality.allCases) { quality in
-                        Text(quality.rawValue).tag(quality)
+                    .overlay(alignment: .trailing) {
+                        if !viewModel.urlText.isEmpty {
+                            Button {
+                                viewModel.urlText = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 4)
+                        }
                     }
+                Button {
+                    viewModel.pasteFromClipboard()
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
                 }
-                .labelsHidden()
+                .help("Pegar del portapapeles")
             }
 
             if let errorMessage = viewModel.errorMessage {
@@ -55,9 +74,12 @@ struct PlayerView: View {
             }
 
             HStack {
-                Button("Salir") {
-                    viewModel.onQuitRequested?()
+                Picker("", selection: $viewModel.quality) {
+                    ForEach(VideoQuality.allCases) { quality in
+                        Text(quality.rawValue).tag(quality)
+                    }
                 }
+                .labelsHidden()
 
                 Spacer()
 

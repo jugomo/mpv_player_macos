@@ -83,13 +83,31 @@ enum MPVLauncherError: LocalizedError {
 enum MPVLauncher {
     private static let processesLock = NSLock()
     private static var runningProcesses: [Process] = []
+    private static var currentIPCClient: MPVIPCClient?
 
     /// Called when no mpv process launched by this app is running anymore
     /// (i.e. the user closed the mpv window or playback finished on its own),
     /// so the caller can clear the macOS Now Playing / Control Center info.
     /// Not called when a process is replaced by a newer one via
     /// `terminateAllRunningProcesses()`.
-    static func play(urlString: String, quality: VideoQuality, mpvPath: String, ytdlpPath: String?, onPlaybackEnded: (() -> Void)? = nil) throws {
+    ///
+    /// `onPauseChanged` mirrors mpv's `pause` property (toggled from this
+    /// app's media-key handlers, from mpv's own window/OSC, or from any
+    /// other source) so the Now Playing info stays accurate either way.
+    ///
+    /// `onTitleResolved` reports mpv's own resolved `media-title` (mpv
+    /// already fetches it via ytdl_hook to load the video), so playback
+    /// never has to wait on a second, redundant yt-dlp invocation just to
+    /// display a title.
+    static func play(
+        urlString: String,
+        quality: VideoQuality,
+        mpvPath: String,
+        ytdlpPath: String?,
+        onPlaybackEnded: (() -> Void)? = nil,
+        onPauseChanged: ((Bool) -> Void)? = nil,
+        onTitleResolved: ((String) -> Void)? = nil
+    ) throws {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed),
               let scheme = url.scheme,
@@ -105,7 +123,18 @@ enum MPVLauncher {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: mpvPath)
 
-        var args = quality.mpvArguments(for: trimmed)
+        // mpv registra su propia sesión de "Now Playing" en macOS y, al ser
+        // quien realmente reproduce audio/vídeo, gana la disputa frente a la
+        // de esta app: las teclas multimedia y el Centro de Control le
+        // llegarían a mpv (con un solo elemento en su playlist interna, sin
+        // efecto) en vez de a PlayerViewModel.playNext()/playPrevious(). Se
+        // desactiva para que la app siga siendo la única que reclama esa
+        // sesión y pueda navegar la playlist real.
+        // mpv corre como proceso aparte, así que la única forma de mandarle
+        // comandos (pausar/reanudar desde las teclas multimedia o el Centro
+        // de Control) es a través de este socket JSON IPC.
+        let socketPath = "/tmp/mpvytp-\(UUID().uuidString.prefix(8)).sock"
+        var args = ["--input-media-keys=no", "--input-ipc-server=\(socketPath)"] + quality.mpvArguments(for: trimmed)
         // mpv no acumula --script-opts si el flag se repite: la última
         // aparición reemplaza a las anteriores. Por eso se fusionan todas
         // las claves en un único flag antes de lanzar el proceso.
@@ -142,7 +171,10 @@ enum MPVLauncher {
             processesLock.lock()
             runningProcesses.removeAll { $0 === finishedProcess }
             let isEmpty = runningProcesses.isEmpty
+            let clientToClose = isEmpty ? currentIPCClient : nil
+            if isEmpty { currentIPCClient = nil }
             processesLock.unlock()
+            clientToClose?.close()
 
             if isEmpty, let onPlaybackEnded {
                 DispatchQueue.main.async {
@@ -158,9 +190,50 @@ enum MPVLauncher {
             processesLock.lock()
             runningProcesses.append(process)
             processesLock.unlock()
+            connectIPC(socketPath: socketPath, onPauseChanged: onPauseChanged, onTitleResolved: onTitleResolved)
         } catch {
             throw MPVLauncherError.launchFailed(error.localizedDescription)
         }
+    }
+
+    /// mpv crea el socket del IPC server un instante después de arrancar, no
+    /// al momento: se reintenta con backoff corto hasta que exista.
+    private static func connectIPC(
+        socketPath: String,
+        onPauseChanged: ((Bool) -> Void)?,
+        onTitleResolved: ((String) -> Void)?,
+        attempt: Int = 0
+    ) {
+        if let client = MPVIPCClient(socketPath: socketPath) {
+            client.onPauseChanged = onPauseChanged
+            client.onMediaTitleChanged = onTitleResolved
+            client.observePauseProperty()
+            client.observeMediaTitleProperty()
+            processesLock.lock()
+            currentIPCClient = client
+            processesLock.unlock()
+        } else if attempt < 30 {
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
+                connectIPC(socketPath: socketPath, onPauseChanged: onPauseChanged, onTitleResolved: onTitleResolved, attempt: attempt + 1)
+            }
+        }
+    }
+
+    /// Pausa o reanuda el mpv actual a través del IPC server. No hace nada si
+    /// no hay ningún mpv en marcha.
+    static func setPause(_ paused: Bool) {
+        processesLock.lock()
+        let client = currentIPCClient
+        processesLock.unlock()
+        client?.send(command: ["set_property", "pause", paused])
+    }
+
+    /// Alterna pausa/reproducción del mpv actual a través del IPC server.
+    static func togglePause() {
+        processesLock.lock()
+        let client = currentIPCClient
+        processesLock.unlock()
+        client?.send(command: ["cycle", "pause"])
     }
 
     /// Termina todos los procesos mpv lanzados por esta app que sigan vivos.
@@ -169,8 +242,11 @@ enum MPVLauncher {
         processesLock.lock()
         let processes = runningProcesses
         runningProcesses.removeAll()
+        let client = currentIPCClient
+        currentIPCClient = nil
         processesLock.unlock()
 
+        client?.close()
         for process in processes where process.isRunning {
             process.terminate()
         }

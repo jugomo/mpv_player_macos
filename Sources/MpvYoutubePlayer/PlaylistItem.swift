@@ -5,8 +5,8 @@ struct PlaylistItem: Codable, Identifiable, Equatable {
     let urlString: String
     var quality: VideoQuality
     let addedAt: Date
-    /// Título real del vídeo, obtenido en segundo plano vía yt-dlp tras añadir
-    /// el elemento (para no retrasar la reproducción). nil hasta que se resuelve.
+    /// Título real del vídeo, reportado por mpv (vía IPC) una vez lo resuelve
+    /// al cargar el vídeo. nil hasta que se resuelve.
     var title: String?
 
     init(id: UUID = UUID(), urlString: String, quality: VideoQuality, addedAt: Date = Date(), title: String? = nil) {

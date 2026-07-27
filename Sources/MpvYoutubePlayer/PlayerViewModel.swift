@@ -15,11 +15,12 @@ final class PlayerViewModel: ObservableObject {
     /// commands from the keyboard media keys and the Control Center widget.
     @Published private(set) var currentlyPlayingItemID: UUID?
 
+    /// Mirrors mpv's `pause` property (via IPC), used to reflect the real
+    /// playback state in the Now Playing info.
+    @Published private(set) var isPaused: Bool = false
+
     /// Set by the AppDelegate; called after a successful launch to close the popover.
     var onPlaybackStarted: (() -> Void)?
-
-    /// Set by the AppDelegate; called when the user asks to quit from the popover.
-    var onQuitRequested: (() -> Void)?
 
     /// Set by the AppDelegate; called when the user wants to open the playlist screen.
     var onOpenPlaylistRequested: (() -> Void)?
@@ -49,11 +50,26 @@ final class PlayerViewModel: ObservableObject {
             return self.playPrevious() ? .success : .noSuchContent
         }
 
-        // We don't proxy play/pause/seek to mpv, so keep those disabled
-        // rather than showing controls that silently do nothing.
-        center.playCommand.isEnabled = false
-        center.pauseCommand.isEnabled = false
-        center.togglePlayPauseCommand.isEnabled = false
+        center.playCommand.isEnabled = true
+        center.playCommand.addTarget { _ in
+            MPVLauncher.setPause(false)
+            return .success
+        }
+
+        center.pauseCommand.isEnabled = true
+        center.pauseCommand.addTarget { _ in
+            MPVLauncher.setPause(true)
+            return .success
+        }
+
+        center.togglePlayPauseCommand.isEnabled = true
+        center.togglePlayPauseCommand.addTarget { _ in
+            MPVLauncher.togglePause()
+            return .success
+        }
+
+        // No proxeamos seek/stop a mpv, así que se dejan desactivados en vez
+        // de mostrar controles que no harían nada.
         center.stopCommand.isEnabled = false
         center.changePlaybackPositionCommand.isEnabled = false
     }
@@ -82,8 +98,25 @@ final class PlayerViewModel: ObservableObject {
 
     private func handlePlaybackEnded() {
         currentlyPlayingItemID = nil
+        isPaused = false
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().playbackState = .stopped
+    }
+
+    private func handlePauseChanged(_ paused: Bool) {
+        isPaused = paused
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        info[MPNowPlayingInfoPropertyPlaybackRate] = paused ? 0.0 : 1.0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        MPNowPlayingInfoCenter.default().playbackState = paused ? .paused : .playing
+    }
+
+    private func handleTitleResolved(_ title: String) {
+        guard let id = currentlyPlayingItemID else { return }
+        playlistStore.updateTitle(for: id, title: title)
+        var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+        info[MPMediaItemPropertyTitle] = title
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     func refreshDependencyStatus() {
@@ -119,11 +152,14 @@ final class PlayerViewModel: ObservableObject {
                 quality: effectiveQuality,
                 mpvPath: mpvPath,
                 ytdlpPath: status.ytdlpPath,
-                onPlaybackEnded: { [weak self] in self?.handlePlaybackEnded() }
+                onPlaybackEnded: { [weak self] in self?.handlePlaybackEnded() },
+                onPauseChanged: { [weak self] paused in self?.handlePauseChanged(paused) },
+                onTitleResolved: { [weak self] title in self?.handleTitleResolved(title) }
             )
-            playlistStore.add(urlString: targetURLString, quality: effectiveQuality, ytdlpPath: status.ytdlpPath)
+            playlistStore.add(urlString: targetURLString, quality: effectiveQuality)
             let playingItem = playlistStore.items.first(where: { $0.urlString == targetURLString })
             currentlyPlayingItemID = playingItem?.id
+            isPaused = false
             updateNowPlayingInfo(title: playingItem?.title ?? targetURLString)
             urlText = ""
             onPlaybackStarted?()
@@ -135,6 +171,22 @@ final class PlayerViewModel: ObservableObject {
     func play(item: PlaylistItem) {
         urlText = item.urlString
         play(quality: item.quality)
+    }
+
+    /// Used by the popup's header play button: plays the typed URL if there
+    /// is one, otherwise resumes the most recent playlist item.
+    func playPrimary() {
+        guard !urlText.trimmingCharacters(in: .whitespaces).isEmpty else {
+            if let first = playlistStore.items.first {
+                play(item: first)
+            }
+            return
+        }
+        play()
+    }
+
+    var canPlayPrimary: Bool {
+        !urlText.trimmingCharacters(in: .whitespaces).isEmpty || !playlistStore.items.isEmpty
     }
 
     func installMissingDependencies() {

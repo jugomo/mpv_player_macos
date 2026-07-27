@@ -26,9 +26,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewModel.onPlaybackStarted = { [weak self] in
             self?.closePopover()
         }
-        viewModel.onQuitRequested = {
-            NSApp.terminate(nil)
-        }
         viewModel.onOpenPlaylistRequested = { [weak self] in
             self?.showPlaylistWindow()
         }

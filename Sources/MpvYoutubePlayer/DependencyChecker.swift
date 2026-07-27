@@ -23,9 +23,21 @@ enum DependencyChecker {
     static func currentStatus() -> DependencyStatus {
         DependencyStatus(
             brewPath: findExecutable(named: "brew"),
-            mpvPath: findExecutable(named: "mpv"),
-            ytdlpPath: findExecutable(named: "yt-dlp")
+            mpvPath: bundledExecutable(named: "mpv") ?? findExecutable(named: "mpv"),
+            ytdlpPath: bundledExecutable(named: "yt-dlp") ?? findExecutable(named: "yt-dlp")
         )
+    }
+
+    /// mpv y yt-dlp se vendorizan dentro del bundle en build.sh (ver
+    /// scripts/vendor_mpv.py), así que una app empaquetada correctamente no
+    /// necesita ni Homebrew ni estas herramientas instaladas en el sistema.
+    /// Devuelve nil cuando se ejecuta sin empaquetar (p. ej. `swift run` en
+    /// desarrollo), donde no hay `Bundle.main.resourceURL/bin`; en ese caso
+    /// se recurre a la detección de Homebrew de más abajo.
+    static func bundledExecutable(named name: String) -> String? {
+        guard let resourceURL = Bundle.main.resourceURL else { return nil }
+        let candidate = resourceURL.appendingPathComponent("bin/\(name)").path
+        return FileManager.default.isExecutableFile(atPath: candidate) ? candidate : nil
     }
 
     static func findExecutable(named name: String) -> String? {

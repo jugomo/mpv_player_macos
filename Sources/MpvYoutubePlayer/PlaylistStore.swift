@@ -25,21 +25,10 @@ final class PlaylistStore: ObservableObject {
         load()
     }
 
-    func add(urlString: String, quality: VideoQuality, ytdlpPath: String?) {
+    func add(urlString: String, quality: VideoQuality) {
         guard !items.contains(where: { $0.urlString == urlString }) else { return }
-        let newItem = PlaylistItem(urlString: urlString, quality: quality)
-        items.insert(newItem, at: 0)
+        items.insert(PlaylistItem(urlString: urlString, quality: quality), at: 0)
         save()
-
-        guard let ytdlpPath else { return }
-        VideoTitleFetcher.fetchTitle(urlString: urlString, ytdlpPath: ytdlpPath) { [weak self] title in
-            Task { @MainActor in
-                guard let self, let title,
-                      let index = self.items.firstIndex(where: { $0.id == newItem.id }) else { return }
-                self.items[index].title = title
-                self.save()
-            }
-        }
     }
 
     func updateQuality(for item: PlaylistItem, quality: VideoQuality) {
@@ -48,25 +37,33 @@ final class PlaylistStore: ObservableObject {
         save()
     }
 
+    /// Título real reportado por mpv (vía IPC) una vez lo resuelve con su
+    /// propio ytdl_hook al cargar el vídeo.
+    func updateTitle(for id: UUID, title: String) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].title = title
+        save()
+    }
+
     func remove(_ item: PlaylistItem) {
         items.removeAll { $0.id == item.id }
         save()
     }
 
-    /// Item right below `id` in the list (older entry), used to move
-    /// forward when advancing the playlist via media keys / Control Center.
+    /// Item right below `id` in the list (older entry), wrapping around to
+    /// the top when `id` is the last one. Used to move forward when
+    /// advancing the playlist via media keys / Control Center.
     func item(after id: UUID?) -> PlaylistItem? {
-        guard let id, let index = items.firstIndex(where: { $0.id == id }),
-              items.indices.contains(index + 1) else { return nil }
-        return items[index + 1]
+        guard items.count > 1, let id, let index = items.firstIndex(where: { $0.id == id }) else { return nil }
+        return items[(index + 1) % items.count]
     }
 
-    /// Item right above `id` in the list (more recent entry), used to move
+    /// Item right above `id` in the list (more recent entry), wrapping
+    /// around to the bottom when `id` is the first one. Used to move
     /// backward when rewinding the playlist via media keys / Control Center.
     func item(before id: UUID?) -> PlaylistItem? {
-        guard let id, let index = items.firstIndex(where: { $0.id == id }),
-              items.indices.contains(index - 1) else { return nil }
-        return items[index - 1]
+        guard items.count > 1, let id, let index = items.firstIndex(where: { $0.id == id }) else { return nil }
+        return items[(index - 1 + items.count) % items.count]
     }
 
     func export(to url: URL) throws {
