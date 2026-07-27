@@ -1,0 +1,4 @@
+.DS_Store
+.build/
+.claude/settings.local.json
+MpvYoutubePlayer.app/
