@@ -45,10 +45,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
+        let playerHostingController = NSHostingController(rootView: PlayerView(viewModel: viewModel))
+        // Sin esto, el popover se queda con el tamaño fijo de su primer
+        // layout: si luego el título pasa a ocupar varias líneas (o aparece
+        // la seek bar), SwiftUI comprime el contenido para caber en ese
+        // alto viejo en vez de crecer, y el título se ve recortado a una
+        // sola línea pese al lineLimit. Con esto, el popover sigue
+        // ajustando su alto al contenido real en todo momento.
+        playerHostingController.sizingOptions = [.preferredContentSize]
         popover = NSPopover()
         popover.behavior = .transient
-        popover.contentSize = NSSize(width: 320, height: 260)
-        popover.contentViewController = NSHostingController(rootView: PlayerView(viewModel: viewModel))
+        popover.contentViewController = playerHostingController
 
         viewModel.onPlaybackStarted = { [weak self] in
             self?.closePopover()

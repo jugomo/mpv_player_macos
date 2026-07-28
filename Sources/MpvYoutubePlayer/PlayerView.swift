@@ -33,6 +33,7 @@ struct PlayerView: View {
                 }
                 .buttonStyle(.borderless)
                 .help(loc.t(.playlist))
+                .padding(.trailing, 8)
 
                 Button {
                     viewModel.playPrevious()
@@ -53,6 +54,15 @@ struct PlayerView: View {
                 .help(viewModel.isCurrentlyPlaying ? loc.t(.pauseTooltip) : loc.t(.playTooltip))
 
                 Button {
+                    viewModel.stop()
+                } label: {
+                    Image(systemName: "stop.fill")
+                }
+                .buttonStyle(.borderless)
+                .disabled(viewModel.currentlyPlayingItemID == nil)
+                .help(loc.t(.stopTooltip))
+
+                Button {
                     viewModel.playNext()
                 } label: {
                     Image(systemName: "forward.end.fill")
@@ -61,16 +71,16 @@ struct PlayerView: View {
                 .disabled(!viewModel.status.isReady || !viewModel.canPlayNext)
                 .help(loc.t(.nextTooltip))
 
-                if let title = viewModel.currentlyPlayingTitle {
-                    Text(title)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Spacer()
-                }
+                Spacer()
+            }
+
+            if let title = viewModel.currentlyPlayingTitle {
+                Text(title)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1...6)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             if viewModel.currentlyPlayingItemID != nil {

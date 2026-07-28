@@ -250,7 +250,19 @@ final class PlayerViewModel: ObservableObject {
             durationSeconds = 0
             isScrubbing = false
             onPauseStateChanged?(false)
-            updateNowPlayingInfo(title: playingItem?.title ?? targetURLString)
+
+            // Si este mismo vídeo ya se reprodujo antes (aunque la URL exacta
+            // no coincida, p.ej. por parámetros de tracking), reutiliza ese
+            // título ya conocido en vez de mostrar la URL mientras mpv la
+            // resuelve de nuevo desde cero.
+            var resolvedTitle = playingItem?.title
+            if resolvedTitle == nil, let id = playingItem?.id,
+               let knownTitle = playlistStore.previouslyResolvedTitle(forVideoMatching: targetURLString) {
+                playlistStore.updateTitle(for: id, title: knownTitle)
+                resolvedTitle = knownTitle
+            }
+
+            updateNowPlayingInfo(title: resolvedTitle ?? targetURLString)
             urlText = ""
             onPlaybackStarted?()
         } catch {
@@ -302,6 +314,15 @@ final class PlayerViewModel: ObservableObject {
 
     var canPlayPrevious: Bool {
         playlistStore.item(before: currentlyPlayingItemID) != nil
+    }
+
+    /// Detiene la reproducción actual, si hay alguna. Termina el proceso mpv
+    /// en marcha; el resto del estado (icono idle, Now Playing, etc.) se
+    /// limpia solo a través de `handlePlaybackEnded`, disparado por el mismo
+    /// `terminationHandler` que ya maneja el cierre manual de la ventana de
+    /// mpv o el fin natural de la reproducción.
+    func stop() {
+        MPVLauncher.terminateAllRunningProcesses()
     }
 
     /// Action for the header's primary play/pause button: toggles pause if

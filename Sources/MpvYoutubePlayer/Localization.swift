@@ -20,7 +20,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 enum LKey {
     case appTitle, help, close, settings, quit, language
     case playlist, playTooltip, pasteFromClipboard, urlPlaceholder
-    case pauseTooltip, previousTooltip, nextTooltip
+    case pauseTooltip, previousTooltip, nextTooltip, stopTooltip
     case audioOnly, playButton
     case mpvNotInstalled, ytdlpNotInstalled, homebrewNotInstalledEither
     case openTerminalToInstallHomebrew, installWithHomebrew
@@ -77,6 +77,7 @@ final class LocalizationManager: ObservableObject {
         .pauseTooltip: ("Pausar", "Pause"),
         .previousTooltip: ("Anterior", "Previous"),
         .nextTooltip: ("Siguiente", "Next"),
+        .stopTooltip: ("Detener", "Stop"),
         .pasteFromClipboard: ("Pegar del portapapeles", "Paste from clipboard"),
         .urlPlaceholder: ("https://www.youtube.com/watch?v=…", "https://www.youtube.com/watch?v=…"),
         .audioOnly: ("Solo audio", "Audio only"),

@@ -54,16 +54,33 @@ enum VideoQuality: String, CaseIterable, Identifiable, Codable {
     /// otras en un único flag --script-opts, que en mpv no se acumula si se
     /// repite el flag).
     var scriptOpts: [String: String] {
-        guard self == .audioOnly else { return [:] }
+        if self == .audioOnly {
+            return [
+                // Por defecto el OSC se oculta hasta mover el ratón; en modo
+                // solo audio no hay vídeo bajo el que "esconderse", así que
+                // lo dejamos siempre visible.
+                "osc-visibility": "always",
+                // Sin vídeo la ventana es pequeña y los controles por
+                // defecto (escala 1x) quedan diminutos; los agrandamos para
+                // que se vean e interactúen bien.
+                "osc-scalewindowed": "10.0",
+            ]
+        }
         return [
-            // Por defecto el OSC se oculta hasta mover el ratón; en modo solo
-            // audio no hay vídeo bajo el que "esconderse", así que lo dejamos
-            // siempre visible.
-            "osc-visibility": "always",
-            // Sin vídeo la ventana es pequeña y los controles por defecto
-            // (escala 1x) quedan diminutos; los agrandamos para que se vean
-            // e interactúen bien.
-            "osc-scalewindowed": "10.0",
+            // Botón custom del OSC (soportado nativamente por mpv en los
+            // layouts bottombar/topbar, el default) para fijar la ventana de
+            // vídeo por encima de las demás sin salir de mpv. Sin sentido en
+            // modo solo audio, donde no hay vídeo que "flote" sobre otras
+            // ventanas.
+            //
+            // El contenido del botón se renderiza con la fuente normal del
+            // OSD (no con la fuente de iconos propia de mpv), así que un
+            // emoji a color como 📌 no pinta nada (libass no soporta glifos
+            // bitmap/color): sale un cuadro vacío. "⬆" es un glifo vectorial
+            // normal, siempre disponible. El show-text da feedback inmediato
+            // ya que el botón no tiene tooltip.
+            "osc-custom_button_1_content": "⬆",
+            "osc-custom_button_1_mbtn_left_command": "cycle ontop; show-text \"On top: ${ontop}\"",
         ]
     }
 
@@ -76,6 +93,11 @@ enum VideoQuality: String, CaseIterable, Identifiable, Codable {
             // barra de progreso, volumen) para poder controlar y detener el audio.
             args.append("--no-video")
             args.append("--force-window=yes")
+            // La ventana arranca minimizada (ver `minimizeWindowOnReady` en
+            // MPVLauncher.play): --window-minimized=yes como flag de arranque
+            // no funciona de forma fiable en macOS (el VO de Cocoa lo ignora
+            // al iniciar, confirmado probando la propiedad tras el arranque),
+            // así que hay que aplicarlo por IPC una vez la ventana ya existe.
         }
         args.append(url)
         return args
@@ -223,7 +245,8 @@ enum MPVLauncher {
                 onTitleResolved: onTitleResolved,
                 onPlaybackReady: onPlaybackReady,
                 onTimePositionChanged: onTimePositionChanged,
-                onDurationChanged: onDurationChanged
+                onDurationChanged: onDurationChanged,
+                minimizeWindowOnReady: quality == .audioOnly
             )
         } catch {
             throw MPVLauncherError.launchFailed(error.localizedDescription)
@@ -239,12 +262,23 @@ enum MPVLauncher {
         onPlaybackReady: ((String) -> Void)?,
         onTimePositionChanged: ((Double) -> Void)?,
         onDurationChanged: ((Double) -> Void)?,
+        minimizeWindowOnReady: Bool,
         attempt: Int = 0
     ) {
         if let client = MPVIPCClient(socketPath: socketPath) {
             client.onPauseChanged = onPauseChanged
             client.onMediaTitleChanged = onTitleResolved
-            client.onPlaybackReady = onPlaybackReady
+            // La ventana solo existe de verdad a partir de este evento
+            // (mpv la crea perezosamente); minimizarla antes no tiene efecto
+            // fiable en macOS. Se hace aquí, antes de reenviar el callback
+            // del caller, para que la ventana ya esté minimizada cuando se
+            // dispare el toast de "reproduciendo ahora".
+            client.onPlaybackReady = { title in
+                if minimizeWindowOnReady {
+                    client.send(command: ["set_property", "window-minimized", true])
+                }
+                onPlaybackReady?(title)
+            }
             client.onTimePositionChanged = onTimePositionChanged
             client.onDurationChanged = onDurationChanged
             client.observePauseProperty()
@@ -263,6 +297,7 @@ enum MPVLauncher {
                     onPlaybackReady: onPlaybackReady,
                     onTimePositionChanged: onTimePositionChanged,
                     onDurationChanged: onDurationChanged,
+                    minimizeWindowOnReady: minimizeWindowOnReady,
                     attempt: attempt + 1
                 )
             }

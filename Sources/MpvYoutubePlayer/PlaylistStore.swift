@@ -31,6 +31,50 @@ final class PlaylistStore: ObservableObject {
         save()
     }
 
+    /// Título ya resuelto de una reproducción anterior del mismo vídeo,
+    /// aunque la URL exacta no coincida byte a byte (enlaces compartidos de
+    /// YouTube suelen llevar parámetros de tracking distintos, p.ej. `si=`,
+    /// cada vez que se copian). Se compara por ID de vídeo en vez de por
+    /// `urlString` para poder mostrar el título de inmediato en vez de la URL
+    /// mientras mpv la resuelve de nuevo.
+    func previouslyResolvedTitle(forVideoMatching urlString: String) -> String? {
+        guard let targetID = Self.youTubeVideoID(from: urlString) else { return nil }
+        return items.first { item in
+            guard let title = item.title, !title.isEmpty,
+                  // Descarta títulos "resueltos" que en realidad son solo un
+                  // trozo de la URL (p.ej. cuando yt-dlp no pudo obtener el
+                  // título real y mpv usó ese valor de respaldo).
+                  !title.contains("watch?v=") else { return false }
+            return Self.youTubeVideoID(from: item.urlString) == targetID
+        }?.title
+    }
+
+    /// Extrae el ID de vídeo de una URL de YouTube en cualquiera de sus
+    /// formatos habituales (watch, youtu.be, shorts, embed, live),
+    /// ignorando el resto de parámetros de query.
+    private static func youTubeVideoID(from urlString: String) -> String? {
+        guard let components = URLComponents(string: urlString),
+              let host = components.host?.lowercased() else { return nil }
+
+        if host.contains("youtu.be") {
+            return components.path.split(separator: "/").first.map(String.init)
+        }
+
+        guard host.contains("youtube.com") else { return nil }
+
+        if let v = components.queryItems?.first(where: { $0.name == "v" })?.value {
+            return v
+        }
+
+        let pathParts = components.path.split(separator: "/").map(String.init)
+        if let markerIndex = pathParts.firstIndex(where: { ["shorts", "embed", "live"].contains($0) }),
+           pathParts.count > markerIndex + 1 {
+            return pathParts[markerIndex + 1]
+        }
+
+        return nil
+    }
+
     func updateQuality(for item: PlaylistItem, quality: VideoQuality) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         items[index].quality = quality
