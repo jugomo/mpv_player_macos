@@ -15,6 +15,12 @@ final class MPVIPCClient {
     /// solo para mostrarlo, que competía por red/CPU con la resolución de
     /// mpv y retrasaba el inicio de la reproducción.
     var onMediaTitleChanged: ((String) -> Void)?
+    /// Posición de reproducción y duración totales en segundos, para la seek
+    /// bar. mpv limita por sí mismo la frecuencia de estos eventos para
+    /// propiedades que cambian continuamente, así que no hace falta hacer
+    /// polling manual con `get_property`.
+    var onTimePositionChanged: ((Double) -> Void)?
+    var onDurationChanged: ((Double) -> Void)?
     /// Se dispara una única vez por reproducción, en el momento en que mpv
     /// realmente empieza a mostrar el vídeo (evento `playback-restart`), con
     /// el título ya resuelto. Lo usa la app para mostrar un aviso tipo toast
@@ -85,6 +91,16 @@ final class MPVIPCClient {
                     DispatchQueue.main.async { [weak self] in
                         self?.onMediaTitleChanged?(title)
                     }
+                case "time-pos":
+                    guard let seconds = object["data"] as? Double else { continue }
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onTimePositionChanged?(seconds)
+                    }
+                case "duration":
+                    guard let seconds = object["data"] as? Double else { continue }
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onDurationChanged?(seconds)
+                    }
                 default:
                     break
                 }
@@ -120,6 +136,14 @@ final class MPVIPCClient {
 
     func observeMediaTitleProperty() {
         send(command: ["observe_property", 2, "media-title"])
+    }
+
+    func observeTimePositionProperty() {
+        send(command: ["observe_property", 3, "time-pos"])
+    }
+
+    func observeDurationProperty() {
+        send(command: ["observe_property", 4, "duration"])
     }
 
     func close() {

@@ -128,7 +128,9 @@ enum MPVLauncher {
         onPlaybackEnded: (() -> Void)? = nil,
         onPauseChanged: ((Bool) -> Void)? = nil,
         onTitleResolved: ((String) -> Void)? = nil,
-        onPlaybackReady: ((String) -> Void)? = nil
+        onPlaybackReady: ((String) -> Void)? = nil,
+        onTimePositionChanged: ((Double) -> Void)? = nil,
+        onDurationChanged: ((Double) -> Void)? = nil
     ) throws {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed),
@@ -215,7 +217,14 @@ enum MPVLauncher {
             processesLock.lock()
             runningProcesses.append(process)
             processesLock.unlock()
-            connectIPC(socketPath: socketPath, onPauseChanged: onPauseChanged, onTitleResolved: onTitleResolved, onPlaybackReady: onPlaybackReady)
+            connectIPC(
+                socketPath: socketPath,
+                onPauseChanged: onPauseChanged,
+                onTitleResolved: onTitleResolved,
+                onPlaybackReady: onPlaybackReady,
+                onTimePositionChanged: onTimePositionChanged,
+                onDurationChanged: onDurationChanged
+            )
         } catch {
             throw MPVLauncherError.launchFailed(error.localizedDescription)
         }
@@ -228,20 +237,34 @@ enum MPVLauncher {
         onPauseChanged: ((Bool) -> Void)?,
         onTitleResolved: ((String) -> Void)?,
         onPlaybackReady: ((String) -> Void)?,
+        onTimePositionChanged: ((Double) -> Void)?,
+        onDurationChanged: ((Double) -> Void)?,
         attempt: Int = 0
     ) {
         if let client = MPVIPCClient(socketPath: socketPath) {
             client.onPauseChanged = onPauseChanged
             client.onMediaTitleChanged = onTitleResolved
             client.onPlaybackReady = onPlaybackReady
+            client.onTimePositionChanged = onTimePositionChanged
+            client.onDurationChanged = onDurationChanged
             client.observePauseProperty()
             client.observeMediaTitleProperty()
+            client.observeTimePositionProperty()
+            client.observeDurationProperty()
             processesLock.lock()
             currentIPCClient = client
             processesLock.unlock()
         } else if attempt < 30 {
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
-                connectIPC(socketPath: socketPath, onPauseChanged: onPauseChanged, onTitleResolved: onTitleResolved, onPlaybackReady: onPlaybackReady, attempt: attempt + 1)
+                connectIPC(
+                    socketPath: socketPath,
+                    onPauseChanged: onPauseChanged,
+                    onTitleResolved: onTitleResolved,
+                    onPlaybackReady: onPlaybackReady,
+                    onTimePositionChanged: onTimePositionChanged,
+                    onDurationChanged: onDurationChanged,
+                    attempt: attempt + 1
+                )
             }
         }
     }
@@ -261,6 +284,15 @@ enum MPVLauncher {
         let client = currentIPCClient
         processesLock.unlock()
         client?.send(command: ["cycle", "pause"])
+    }
+
+    /// Salta a una posición absoluta (en segundos) del mpv actual a través
+    /// del IPC server. No hace nada si no hay ningún mpv en marcha.
+    static func seek(to seconds: Double) {
+        processesLock.lock()
+        let client = currentIPCClient
+        processesLock.unlock()
+        client?.send(command: ["set_property", "time-pos", seconds])
     }
 
     /// Termina todos los procesos mpv lanzados por esta app que sigan vivos.

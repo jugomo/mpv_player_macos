@@ -3,14 +3,24 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private static let statusIconName = "play.rectangle.fill"
-    private static let pausedIconName = "pause.rectangle.fill"
+    /// Icono mostrado cuando no hay nada cargado en mpv (arranque de la app,
+    /// o tras terminar/cerrar la reproducción). Es el icono original de la
+    /// app (rectángulo relleno, look tipo YouTube), distinto del icono de
+    /// reproducción para que "nada seleccionado" no se confunda con "en
+    /// reproducción" a simple vista.
+    private static let idleIconName = "play.rectangle.fill"
+    private static let statusIconName = "play.fill"
+    private static let pausedIconName = "pause.fill"
     private var statusItem: NSStatusItem!
     /// Estado de icono de la barra de menú: se recalcula por completo cada
-    /// vez que cambia `isLoading` o `isPaused`, en vez de ir alternando
-    /// pasos sueltos, para que ambos nunca compitan por `button.image`.
+    /// vez que cambia `isLoading`, `isPaused` o `isIdle`, en vez de ir
+    /// alternando pasos sueltos, para que todos nunca compitan por
+    /// `button.image`.
     private var isLoading = false
     private var isPaused = false
+    /// `true` mientras no haya ningún item cargado en mpv (antes de la
+    /// primera reproducción, o tras terminar/detenerse la actual).
+    private var isIdle = true
     /// Evita reprogramar la animación de giro si ya está en marcha.
     private var isShowingLoadingIcon = false
     private var pauseBlinkTimer: Timer?
@@ -29,7 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: Self.statusIconName, accessibilityDescription: "mpv YouTube Player")
+            button.image = NSImage(systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv YouTube Player")
             button.action = #selector(handleStatusItemClick(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -42,6 +52,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         viewModel.onPlaybackStarted = { [weak self] in
             self?.closePopover()
+            self?.isIdle = false
+            self?.refreshStatusIcon()
+        }
+        viewModel.onPlaybackStopped = { [weak self] in
+            self?.isIdle = true
+            self?.refreshStatusIcon()
         }
         viewModel.onOpenPlaylistRequested = { [weak self] in
             self?.showPlaylistWindow()
@@ -63,9 +79,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Punto único de decisión del icono de la barra de menú: `isLoading`
-    /// gana siempre sobre `isPaused` (no pueden solaparse en la práctica,
-    /// pero por si acaso), y solo cuando ninguno está activo se muestra el
-    /// icono normal fijo.
+    /// gana siempre sobre `isPaused`, y este a su vez sobre `isIdle` (no
+    /// pueden solaparse en la práctica, pero por si acaso). Solo cuando
+    /// ninguno de los tres está activo se muestra el icono fijo de
+    /// "reproduciendo".
     private func refreshStatusIcon() {
         if isLoading {
             stopPauseBlink()
@@ -76,12 +93,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 startPauseBlink()
             } else {
                 stopPauseBlink()
-                showNormalIcon()
+                if isIdle {
+                    showIdleIcon()
+                } else {
+                    showPlayingIcon()
+                }
             }
         }
     }
 
-    private func showNormalIcon() {
+    private func showIdleIcon() {
+        statusItem.button?.image = NSImage(systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv YouTube Player")
+    }
+
+    private func showPlayingIcon() {
         statusItem.button?.image = NSImage(systemSymbolName: Self.statusIconName, accessibilityDescription: "mpv YouTube Player")
     }
 
@@ -124,7 +149,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startPauseBlink() {
         guard pauseBlinkTimer == nil else { return }
         isShowingPausedIcon = false
-        showNormalIcon()
+        showPlayingIcon()
         pauseBlinkTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
             // Timer.scheduledTimer's closure isn't statically MainActor, but
             // it always fires on the run loop it was scheduled from — the
@@ -138,6 +163,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func togglePauseBlinkIcon() {
         guard let button = statusItem.button else { return }
         isShowingPausedIcon.toggle()
+
+        button.wantsLayer = true
+        let fade = CATransition()
+        fade.type = .fade
+        fade.duration = 0.35
+        button.layer?.add(fade, forKey: "mpvytp.pauseFade")
+
         button.image = NSImage(
             systemSymbolName: isShowingPausedIcon ? Self.pausedIconName : Self.statusIconName,
             accessibilityDescription: "mpv YouTube Player"

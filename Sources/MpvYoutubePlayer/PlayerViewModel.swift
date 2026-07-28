@@ -19,8 +19,21 @@ final class PlayerViewModel: ObservableObject {
     /// playback state in the Now Playing info.
     @Published private(set) var isPaused: Bool = false
 
+    /// Mirrors mpv's `time-pos`/`duration` properties (via IPC), used to
+    /// drive the seek bar. Both reset to 0 between videos.
+    @Published private(set) var currentTimeSeconds: Double = 0
+    @Published private(set) var durationSeconds: Double = 0
+    /// `true` while the user is dragging the seek bar, so incoming
+    /// `time-pos` updates from mpv don't fight the drag and snap it back.
+    private var isScrubbing = false
+
     /// Set by the AppDelegate; called after a successful launch to close the popover.
     var onPlaybackStarted: (() -> Void)?
+
+    /// Set by the AppDelegate; called once mpv has fully stopped and there is
+    /// no item loaded anymore (playback ended, or its process died before
+    /// showing anything), so the menu bar icon can fall back to its idle look.
+    var onPlaybackStopped: (() -> Void)?
 
     /// Set by the AppDelegate; called when the user wants to open the playlist screen.
     var onOpenPlaylistRequested: (() -> Void)?
@@ -125,7 +138,11 @@ final class PlayerViewModel: ObservableObject {
     private func handlePlaybackEnded(token: Int) {
         currentlyPlayingItemID = nil
         isPaused = false
+        currentTimeSeconds = 0
+        durationSeconds = 0
+        isScrubbing = false
         onPauseStateChanged?(false)
+        onPlaybackStopped?()
         // Salvaguarda: si mpv termina antes de llegar a mostrar vídeo (p.ej.
         // el usuario cierra su ventana durante la carga), el hint de carga no
         // se quedaría colgado para siempre.
@@ -143,6 +160,29 @@ final class PlayerViewModel: ObservableObject {
         info[MPNowPlayingInfoPropertyPlaybackRate] = paused ? 0.0 : 1.0
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
         MPNowPlayingInfoCenter.default().playbackState = paused ? .paused : .playing
+    }
+
+    private func handleTimePositionChanged(_ seconds: Double) {
+        guard !isScrubbing else { return }
+        currentTimeSeconds = seconds
+    }
+
+    private func handleDurationChanged(_ seconds: Double) {
+        durationSeconds = seconds
+    }
+
+    /// Called continuously while the user drags the seek bar, to reflect the
+    /// dragged position immediately without waiting on mpv's own feedback.
+    func scrubSeekBar(to seconds: Double) {
+        isScrubbing = true
+        currentTimeSeconds = seconds
+    }
+
+    /// Called when the user releases the seek bar, to actually move mpv's
+    /// playback position.
+    func commitSeek(to seconds: Double) {
+        isScrubbing = false
+        MPVLauncher.seek(to: seconds)
     }
 
     private func handleTitleResolved(_ title: String) {
@@ -198,12 +238,17 @@ final class PlayerViewModel: ObservableObject {
                         self.onLoadingStateChanged?(false)
                     }
                     self.onShowTitleToastRequested?(title)
-                }
+                },
+                onTimePositionChanged: { [weak self] seconds in self?.handleTimePositionChanged(seconds) },
+                onDurationChanged: { [weak self] seconds in self?.handleDurationChanged(seconds) }
             )
             playlistStore.add(urlString: targetURLString, quality: effectiveQuality)
             let playingItem = playlistStore.items.first(where: { $0.urlString == targetURLString })
             currentlyPlayingItemID = playingItem?.id
             isPaused = false
+            currentTimeSeconds = 0
+            durationSeconds = 0
+            isScrubbing = false
             onPauseStateChanged?(false)
             updateNowPlayingInfo(title: playingItem?.title ?? targetURLString)
             urlText = ""

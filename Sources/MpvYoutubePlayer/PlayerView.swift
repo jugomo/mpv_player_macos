@@ -73,6 +73,10 @@ struct PlayerView: View {
                 }
             }
 
+            if viewModel.currentlyPlayingItemID != nil {
+                seekBar
+            }
+
             Divider()
 
             if !viewModel.status.isReady {
@@ -146,6 +150,47 @@ struct PlayerView: View {
             viewModel.refreshDependencyStatus()
             viewModel.prefillURLFromClipboardIfEmpty()
         }
+    }
+
+    @ViewBuilder
+    private var seekBar: some View {
+        HStack(spacing: 6) {
+            Text(Self.formatTime(viewModel.currentTimeSeconds))
+                .font(.caption2)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+
+            Slider(
+                value: Binding(
+                    get: { viewModel.currentTimeSeconds },
+                    set: { viewModel.scrubSeekBar(to: $0) }
+                ),
+                in: 0...max(viewModel.durationSeconds, 1),
+                onEditingChanged: { isEditing in
+                    if !isEditing {
+                        viewModel.commitSeek(to: viewModel.currentTimeSeconds)
+                    }
+                }
+            )
+            .disabled(viewModel.durationSeconds <= 0)
+
+            Text(Self.formatTime(viewModel.durationSeconds))
+                .font(.caption2)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private static func formatTime(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 0 else { return "0:00" }
+        let totalSeconds = Int(seconds)
+        let hours = totalSeconds / 3600
+        let minutes = (totalSeconds % 3600) / 60
+        let secs = totalSeconds % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, secs)
+        }
+        return String(format: "%d:%02d", minutes, secs)
     }
 
     @ViewBuilder

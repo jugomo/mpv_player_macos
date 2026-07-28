@@ -15,7 +15,7 @@ enum CacheMode: String, CaseIterable, Identifiable, Codable {
 
     func displayName(in language: AppLanguage) -> String {
         switch self {
-        case .off: return "Off"
+        case .off: return language == .es ? "Personalizado" : "Custom"
         case .fastStart: return language == .es ? "Arranque rápido" : "Fast start"
         case .stable: return language == .es ? "Reproducción estable" : "Stable playback"
         }
