@@ -58,7 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = playerHostingController
 
         viewModel.onPlaybackStarted = { [weak self] in
-            self?.closePopover()
+            if PlaybackWindowSettingsManager.shared.closeWindowsOnPlay {
+                self?.closePopover()
+            }
             self?.isIdle = false
             self?.refreshStatusIcon()
         }
@@ -194,7 +196,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let window = NSWindow(contentViewController: NSHostingController(rootView: PlaylistView(
                 store: playlistStore,
                 viewModel: viewModel,
-                onItemPlayed: { [weak self] in self?.playlistWindow?.close() }
+                onItemPlayed: { [weak self] in
+                    if PlaybackWindowSettingsManager.shared.closeWindowsOnPlay {
+                        self?.playlistWindow?.close()
+                    }
+                }
             )))
             window.title = "Playlist"
             window.styleMask = [.titled, .closable, .resizable, .miniaturizable]

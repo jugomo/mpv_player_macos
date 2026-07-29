@@ -82,9 +82,20 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(loc.t(.closeWindowsOnPlayToggleLabel), isOn: $playbackWindow.closeWindowsOnPlay)
+
+                Text(loc.t(.closeWindowsOnPlayHint))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Spacer()
         }
         .padding(20)
-        .frame(width: 480, height: 440)
+        .frame(width: 480, height: 510)
     }
 }

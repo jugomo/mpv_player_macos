@@ -34,6 +34,7 @@ enum LKey {
     case cacheSectionTitle, cacheDurationLabel
     case renderSectionTitle, renderQualityHint
     case audioOnlyWindowToggleLabel, audioOnlyWindowHint
+    case closeWindowsOnPlayToggleLabel, closeWindowsOnPlayHint
     case fullscreenTooltip, volumeTooltip, vuMeterToggleTooltip
     case playLinkLabel, playLinkTooltip
 }
@@ -146,6 +147,15 @@ final class LocalizationManager: ObservableObject {
         .audioOnlyWindowHint: (
             "Si está activado, el audio se controla desde los controles de esta app (reproducir, pausa, siguiente, buscar) en vez de abrir la ventana de mpv.",
             "When enabled, audio is controlled from this app's own controls (play, pause, next, seek) instead of opening mpv's window."
+        ),
+
+        .closeWindowsOnPlayToggleLabel: (
+            "Cerrar la ventana principal y la playlist al reproducir",
+            "Close the main window and playlist when playing"
+        ),
+        .closeWindowsOnPlayHint: (
+            "Si se desactiva, ambas ventanas permanecen abiertas tras pulsar Reproducir en vez de cerrarse automáticamente.",
+            "When disabled, both windows stay open after pressing Play instead of closing automatically."
         ),
 
         .fullscreenTooltip: ("Pantalla completa", "Fullscreen"),
