@@ -32,6 +32,7 @@ enum LKey {
     case homebrewNotInstalledErrorDescription
     case invalidURLError, mpvLaunchFailedPrefix
     case cacheSectionTitle, cacheDurationLabel
+    case renderSectionTitle, renderQualityHint
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -128,5 +129,11 @@ final class LocalizationManager: ObservableObject {
 
         .cacheSectionTitle: ("Caché de vídeo", "Video cache"),
         .cacheDurationLabel: ("Duración de caché", "Cache duration"),
+
+        .renderSectionTitle: ("Renderizado de vídeo", "Video rendering"),
+        .renderQualityHint: (
+            "Rendimiento reduce el uso de GPU/batería en pantalla completa; Calidad usa el escalador de mayor nitidez de mpv.",
+            "Performance lowers GPU/battery use in fullscreen; Quality uses mpv's sharper scaler."
+        ),
     ]
 }

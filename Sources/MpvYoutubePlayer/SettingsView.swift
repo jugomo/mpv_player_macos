@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var cache = CacheSettingsManager.shared
+    @ObservedObject private var render = RenderSettingsManager.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -50,9 +51,28 @@ struct SettingsView: View {
                 }
             }
 
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(loc.t(.renderSectionTitle))
+                    .font(.subheadline)
+                Picker("", selection: $render.quality) {
+                    ForEach(RenderQuality.allCases) { quality in
+                        Text(quality.displayName(in: loc.language)).tag(quality)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+
+                Text(loc.t(.renderQualityHint))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Spacer()
         }
         .padding(20)
-        .frame(width: 480, height: 320)
+        .frame(width: 480, height: 380)
     }
 }

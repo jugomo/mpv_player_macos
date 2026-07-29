@@ -183,7 +183,15 @@ enum MPVLauncher {
         var args = [
             "--input-media-keys=no",
             "--input-ipc-server=\(socketPath)",
-        ] + CacheSettingsManager.shared.mpvArguments + quality.mpvArguments(for: trimmed)
+            // Sin esto mpv decodifica siempre por software (su valor por
+            // defecto es hwdec=no), aunque el binario incluido soporte
+            // VideoToolbox: el uso de CPU al reproducir puede ser 5-6x mayor
+            // que en un navegador (que sí decodifica con aceleración
+            // hardware). "auto" usa VideoToolbox cuando el códec lo permite
+            // y cae a software automáticamente si no.
+            "--hwdec=auto",
+        ] + RenderSettingsManager.shared.quality.mpvArguments
+          + CacheSettingsManager.shared.mpvArguments + quality.mpvArguments(for: trimmed)
         // mpv no acumula --script-opts si el flag se repite: la última
         // aparición reemplaza a las anteriores. Por eso se fusionan todas
         // las claves en un único flag antes de lanzar el proceso.

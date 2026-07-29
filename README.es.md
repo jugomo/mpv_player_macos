@@ -9,6 +9,20 @@
 App de barra de menú para macOS que reproduce vídeos de YouTube (u otras
 webs soportadas por `yt-dlp`) usando `mpv`.
 
+## Propiedad y colaboraciones
+
+Este proyecto ha sido creado por [@jugomo](https://github.com/jugomo) y
+está licenciado bajo la [Licencia MIT](LICENSE). Cualquier persona es
+bienvenida a usar este software bajo su propia responsabilidad, a
+copiarlo o crear un fork citando al autor original, y a colaborar en su
+desarrollo, ya sea abriendo un pull request o sugiriendo mejoras a
+través de un issue. No se ofrece ninguna garantía.
+
+Nota: la licencia MIT aplica solo al código fuente propio de este
+proyecto. La app empaqueta `mpv` (licencia GPL) y `yt-dlp` (dominio
+público / Unlicense) como binarios vendorizados, esos mantienen sus
+propias licencias originales.
+
 ## Por qué usarla
 
 - **Reproduce solo el vídeo, sin tener el navegador abierto.** Sin Chrome/Safari corriendo de fondo, sin recomendaciones automáticas ni anuncios — solo `mpv` reproduciendo el vídeo.

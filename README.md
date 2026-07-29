@@ -9,6 +9,20 @@
 macOS menu bar app that plays YouTube videos (or any other site supported
 by `yt-dlp`) using `mpv`.
 
+## Ownership & contributing
+
+This project was created by [@jugomo](https://github.com/jugomo) and is
+licensed under the [MIT License](LICENSE). Anyone is welcome to use this
+software at their own risk, copy or fork it as long as the original
+author is credited, and contribute back, whether that's opening a pull
+request or simply suggesting improvements via an issue. No warranty is
+provided.
+
+Note: the MIT license applies to this project's own source code only.
+The app vendors `mpv` (GPL-licensed) and `yt-dlp` (public domain /
+Unlicense) as bundled binaries, those retain their own upstream
+licenses.
+
 ## Why use it
 
 - **Play video without a browser tab open.** No Chrome/Safari running in the background, no autoplay recommendations, no ads — just `mpv` playing the video.
