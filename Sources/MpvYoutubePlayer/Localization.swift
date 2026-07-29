@@ -35,6 +35,7 @@ enum LKey {
     case renderSectionTitle, renderQualityHint
     case audioOnlyWindowToggleLabel, audioOnlyWindowHint
     case fullscreenTooltip, volumeTooltip, vuMeterToggleTooltip
+    case playLinkLabel, playLinkTooltip
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -150,5 +151,8 @@ final class LocalizationManager: ObservableObject {
         .fullscreenTooltip: ("Pantalla completa", "Fullscreen"),
         .volumeTooltip: ("Volumen (solo esta reproducción)", "Volume (this playback only)"),
         .vuMeterToggleTooltip: ("Clic para cambiar de estilo (digital/analógico)", "Click to switch style (digital/analog)"),
+
+        .playLinkLabel: ("Reproducir enlace", "Play link"),
+        .playLinkTooltip: ("Clic para mostrar/ocultar los controles de reproducción", "Click to show/hide the playback controls"),
     ]
 }

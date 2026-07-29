@@ -9,6 +9,13 @@
 macOS menu bar app that plays YouTube videos (or any other site supported
 by `yt-dlp`) using `mpv`.
 
+<p align="center">
+  <img src="promo/promo-video.png" alt="Playing a video, with the seek bar, fullscreen toggle and volume slider" width="49%">
+  <img src="promo/promo-audio.png" alt="Audio-only mode, showing the digital VU meter" width="49%">
+</p>
+
+<p align="center"><sub>Mockups with placeholder data, not real playback.</sub></p>
+
 ## Ownership & contributing
 
 This project was created by [@jugomo](https://github.com/jugomo) and is

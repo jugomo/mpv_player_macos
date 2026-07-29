@@ -1,0 +1,183 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg-card: linear-gradient(180deg, #2c2c2f 0%, #1e1e21 100%);
+    --border: rgba(255,255,255,0.09);
+    --text: #f2f2f3;
+    --text-secondary: #9a9aa0;
+    --accent: #0a84ff;
+    --divider: rgba(255,255,255,0.12);
+    --field-bg: #141416;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    width: 900px; height: 820px;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  }
+  body {
+    background:
+      radial-gradient(1200px 700px at 30% 0%, #3a2f52 0%, transparent 60%),
+      radial-gradient(1000px 700px at 90% 30%, #1f3a4d 0%, transparent 55%),
+      linear-gradient(160deg, #1a1a2e 0%, #0e0e14 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .menubar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 46px;
+    background: rgba(20,20,24,0.55);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 0 28px;
+    gap: 20px;
+  }
+  .menubar .dot { width: 8px; height: 8px; border-radius: 50%; background: #55555c; }
+  .menubar .app-icon {
+    width: 26px; height: 26px;
+    border-radius: 6px;
+    background: rgba(255,255,255,0.14);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1.5px rgba(255,255,255,0.35);
+  }
+  .menubar .app-icon svg { width: 14px; height: 14px; fill: #fff; }
+
+  .card {
+    width: 680px;
+    margin-top: 70px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    box-shadow: 0 40px 90px rgba(0,0,0,0.55), 0 4px 14px rgba(0,0,0,0.4);
+    padding: 32px;
+    color: var(--text);
+  }
+  .titlebar { position: relative; text-align: center; margin-bottom: 18px; }
+  .titlebar h1 { font-size: 22px; font-weight: 600; margin: 0; }
+  .help-btn {
+    position: absolute; right: 0; top: 50%; transform: translateY(-50%);
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary);
+  }
+  .help-btn svg { width: 20px; height: 20px; }
+
+  hr { border: none; border-top: 1px solid var(--divider); margin: 0 0 20px 0; }
+
+  .controls-row { display: flex; align-items: center; gap: 18px; margin-bottom: 24px; }
+  .icon-btn { color: var(--text); display: flex; align-items: center; justify-content: center; }
+  .icon-btn svg { width: 26px; height: 26px; fill: currentColor; }
+  .icon-btn.big svg { width: 30px; height: 30px; }
+  .vdivider { width: 1px; height: 24px; background: var(--divider); }
+  .spacer { flex: 1; }
+
+  .volume { display: flex; align-items: center; gap: 8px; }
+  .volume svg { width: 18px; height: 18px; fill: var(--text-secondary); }
+  .slider-track {
+    width: 130px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.15);
+    position: relative;
+  }
+  .slider-track .fill { position: absolute; left:0; top:0; bottom:0; border-radius: 3px; background: var(--accent); }
+  .slider-track .thumb {
+    position: absolute; top: 50%; transform: translate(-50%,-50%);
+    width: 18px; height: 18px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+  }
+
+  .title-text { font-size: 15px; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.35; }
+
+  .seekbar { display: flex; align-items: center; gap: 14px; margin-bottom: 20px; }
+  .seekbar .time { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .seekbar .slider-track { flex: 1; width: auto; }
+
+  .url-row { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  .url-field {
+    flex: 1; background: var(--field-bg); border: 1px solid var(--border);
+    border-radius: 9px; padding: 12px 16px; font-size: 15px; color: var(--text-secondary);
+    display: flex; align-items: center; gap: 4px;
+  }
+  .url-field .caret { width: 2px; height: 16px; background: var(--accent); }
+  .paste-btn {
+    width: 42px; height: 42px; border-radius: 9px; background: rgba(255,255,255,0.06);
+    display: flex; align-items: center; justify-content: center; color: var(--text-secondary);
+  }
+  .paste-btn svg { width: 20px; height: 20px; }
+
+  .bottom-row { display: flex; align-items: center; gap: 12px; }
+  .quality-picker {
+    background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+    border-radius: 9px; padding: 12px 16px; font-size: 15px; color: var(--text);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .quality-picker svg { width: 12px; height: 12px; fill: var(--text-secondary); }
+  .btn {
+    padding: 12px 20px; border-radius: 9px; font-size: 15px; font-weight: 500;
+    background: rgba(255,255,255,0.06); color: var(--text-secondary);
+  }
+  .btn.primary { background: var(--accent); color: #fff; font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="menubar">
+    <div class="dot"></div><div class="dot"></div>
+    <div class="app-icon">
+      <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="titlebar">
+      <h1>mpv YouTube Player</h1>
+      <div class="help-btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="9.2"/><path d="M9.5 9.2a2.6 2.6 0 1 1 3.7 2.4c-.9.5-1.2 1-1.2 1.9" stroke-linecap="round"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></svg>
+      </div>
+    </div>
+    <hr>
+
+    <div class="controls-row">
+      <div class="icon-btn"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="2.3" rx="1"/><rect x="3" y="11" width="18" height="2.3" rx="1"/><rect x="3" y="17" width="18" height="2.3" rx="1"/></svg></div>
+      <div class="icon-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3H3v6"/><path d="M15 21h6v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg></div>
+      <div class="vdivider"></div>
+      <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M6 6h2v12H6zM20 6L9 12l11 6z"/></svg></div>
+      <div class="icon-btn big"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="5" height="16" rx="1.5"/><rect x="14" y="4" width="5" height="16" rx="1.5"/></svg></div>
+      <div class="icon-btn"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></svg></div>
+      <div class="icon-btn"><svg viewBox="0 0 24 24"><path d="M18 6h-2v12h2zM4 6l11 6L4 18z"/></svg></div>
+      <div class="volume">
+        <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M16.5 8.5a5 5 0 0 1 0 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M19 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" opacity="0.55"/></svg>
+        <div class="slider-track"><div class="fill" style="width:66%"></div><div class="thumb" style="left:66%"></div></div>
+      </div>
+      <div class="spacer"></div>
+    </div>
+
+    <div class="title-text">Placeholder Video Title — Example Channel</div>
+
+    <div class="seekbar">
+      <div class="time">12:34</div>
+      <div class="slider-track"><div class="fill" style="width:28%"></div><div class="thumb" style="left:28%"></div></div>
+      <div class="time">45:10</div>
+    </div>
+
+    <hr>
+
+    <div class="url-row">
+      <div class="url-field">https://www.youtube.com/watch?v=XXXXXXXXXXX<span class="caret"></span></div>
+      <div class="paste-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="6" y="7" width="12" height="14" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg></div>
+    </div>
+
+    <div class="bottom-row">
+      <div class="quality-picker">Auto (best) <svg viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></div>
+      <div class="spacer"></div>
+      <div class="btn">Audio only</div>
+      <div class="btn primary">Play</div>
+    </div>
+  </div>
+</body>
+</html>

@@ -41,6 +41,18 @@ final class PlayerViewModel: ObservableObject {
     @Published private(set) var leftLevel: Double = 0
     @Published private(set) var rightLevel: Double = 0
 
+    /// Whether to show the VU meter. `true` mientras se reproduce un item de
+    /// solo audio, y se mantiene brevemente tras pausar/detener para dar
+    /// tiempo a que la aguja/LEDs terminen de caer a 0dB en vez de
+    /// desaparecer de golpe a mitad de la animación (ver `stopVUMeterDecay`).
+    @Published private(set) var showVUMeters: Bool = false
+
+    /// Tiempo que se mantiene montado el vúmetro tras `handlePlaybackEnded`
+    /// para que la caída a 0dB programada en la vista (ver `VUMeterView`)
+    /// llegue a verse completa antes de retirarlo.
+    private static let vuMeterHideDelaySeconds: Double = 1.6
+    private var vuMeterHideTask: DispatchWorkItem?
+
     /// Set by the AppDelegate; called after a successful launch to close the popover.
     var onPlaybackStarted: (() -> Void)?
 
@@ -167,10 +179,32 @@ final class PlayerViewModel: ObservableObject {
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().playbackState = .stopped
+
+        // El vúmetro se retira con retardo (no al instante) para que la
+        // caída a 0dB forzada arriba (leftLevel/rightLevel = 0) tenga tiempo
+        // de animarse; si ya estaba oculto (era vídeo, o no había nada
+        // cargado) no hace falta ningún retardo.
+        if showVUMeters {
+            scheduleVUMeterHide()
+        }
+    }
+
+    private func scheduleVUMeterHide() {
+        vuMeterHideTask?.cancel()
+        let task = DispatchWorkItem { [weak self] in self?.showVUMeters = false }
+        vuMeterHideTask = task
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.vuMeterHideDelaySeconds, execute: task)
     }
 
     private func handlePauseChanged(_ paused: Bool) {
         isPaused = paused
+        if paused {
+            // Sin nada nuevo que medir mientras está en pausa, los niveles se
+            // fuerzan a 0 aquí para que la vista los anime cayendo a 0dB en
+            // vez de quedarse congelados en el último valor recibido.
+            leftLevel = 0
+            rightLevel = 0
+        }
         onPauseStateChanged?(paused)
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         info[MPNowPlayingInfoPropertyPlaybackRate] = paused ? 0.0 : 1.0
@@ -206,7 +240,17 @@ final class PlayerViewModel: ObservableObject {
         return (clamped - minDB) / -minDB
     }
 
-    private func handleAudioLevelsChanged(leftDB: Double, rightDB: Double) {
+    /// `token` es el `loadingToken` de la reproducción que originó este
+    /// aviso: mpv puede seguir entregando por IPC una última lectura de
+    /// `af-metadata/vu` (buffer de audio ya decodificado) justo después de
+    /// pausar/detener/cambiar de pista, en una carrera con
+    /// `handlePauseChanged`/`handlePlaybackEnded`/`play()` que la reciben en
+    /// orden variable según el run loop. Sin este filtro, esa lectura tardía
+    /// "resucitaba" el nivel justo después de forzarlo a 0, dejando el
+    /// vúmetro congelado en vez de caer — el bug era exactamente esta
+    /// carrera, no la animación en sí.
+    private func handleAudioLevelsChanged(token: Int, leftDB: Double, rightDB: Double) {
+        guard token == loadingToken, currentlyPlayingItemID != nil, !isPaused else { return }
         leftLevel = Self.normalizedLevel(fromDB: leftDB, volumePercent: volume)
         rightLevel = Self.normalizedLevel(fromDB: rightDB, volumePercent: volume)
     }
@@ -282,7 +326,9 @@ final class PlayerViewModel: ObservableObject {
                 },
                 onTimePositionChanged: { [weak self] seconds in self?.handleTimePositionChanged(seconds) },
                 onDurationChanged: { [weak self] seconds in self?.handleDurationChanged(seconds) },
-                onAudioLevelsChanged: { [weak self] left, right in self?.handleAudioLevelsChanged(leftDB: left, rightDB: right) }
+                onAudioLevelsChanged: { [weak self] left, right in
+                    self?.handleAudioLevelsChanged(token: requestToken, leftDB: left, rightDB: right)
+                }
             )
             playlistStore.add(urlString: targetURLString, quality: effectiveQuality)
             let playingItem = playlistStore.items.first(where: { $0.urlString == targetURLString })
@@ -293,6 +339,9 @@ final class PlayerViewModel: ObservableObject {
             isScrubbing = false
             leftLevel = 0
             rightLevel = 0
+            vuMeterHideTask?.cancel()
+            vuMeterHideTask = nil
+            showVUMeters = effectiveQuality == .audioOnly
             onPauseStateChanged?(false)
 
             // Si este mismo vídeo ya se reprodujo antes (aunque la URL exacta
@@ -371,12 +420,6 @@ final class PlayerViewModel: ObservableObject {
 
     func toggleFullscreen() {
         MPVLauncher.toggleFullscreen()
-    }
-
-    /// Whether to show the VU meter: only while actively playing an
-    /// audio-only item (no video track to show instead).
-    var showVUMeters: Bool {
-        currentlyPlayingItemID != nil && !currentlyPlayingHasVideo
     }
 
     /// Detiene la reproducción actual, si hay alguna. Termina el proceso mpv

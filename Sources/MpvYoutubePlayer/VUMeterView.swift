@@ -7,6 +7,11 @@ import SwiftUI
 struct VUMeterView: View {
     let leftLevel: Double
     let rightLevel: Double
+    /// `true` mientras está en pausa o recién detenida (ver `showVUMeters` /
+    /// `handlePauseChanged` en `PlayerViewModel`): la aguja/LEDs usan una
+    /// animación mucho más lenta para caer a 0dB, en vez del seguimiento
+    /// rápido que usan mientras suena música de verdad.
+    let isSettling: Bool
 
     @ObservedObject private var settings = VUMeterSettingsManager.shared
 
@@ -14,9 +19,9 @@ struct VUMeterView: View {
         Group {
             switch settings.style {
             case .digital:
-                DigitalVUMeterView(leftLevel: leftLevel, rightLevel: rightLevel)
+                DigitalVUMeterView(leftLevel: leftLevel, rightLevel: rightLevel, isSettling: isSettling)
             case .analog:
-                AnalogVUMeterView(leftLevel: leftLevel, rightLevel: rightLevel)
+                AnalogVUMeterView(leftLevel: leftLevel, rightLevel: rightLevel, isSettling: isSettling)
             }
         }
         .contentShape(Rectangle())
@@ -25,23 +30,44 @@ struct VUMeterView: View {
     }
 }
 
+/// Duración de la animación cuando el nivel sigue música en vivo (rápida,
+/// para no notarse "retrasada") frente a cuando cae a 0dB en pausa/parada
+/// (lenta y suave, a petición expresa: que "se note" el descenso).
+private let vuLiveAnimationDuration: Double = 0.15
+private let vuSettleAnimationDuration: Double = 1.6
+
 // MARK: - Digital (tiras LED)
 
 private struct DigitalVUMeterView: View {
     let leftLevel: Double
     let rightLevel: Double
+    let isSettling: Bool
 
     var body: some View {
         VStack(spacing: 4) {
-            LEDStripRow(level: leftLevel)
-            LEDStripRow(level: rightLevel)
+            LEDStripRow(level: leftLevel, isSettling: isSettling)
+            LEDStripRow(level: rightLevel, isSettling: isSettling)
         }
     }
 }
 
-private struct LEDStripRow: View {
-    let level: Double
+/// Conforma a `Animatable` (no solo `View`) para que, igual que la aguja
+/// analógica (`NeedleShape`), SwiftUI vuelva a evaluar `body` en cada
+/// fotograma intermedio de la animación con el `level` ya interpolado, en
+/// vez de solo con el valor inicial y el final. Sin esto, `isLit(index)` se
+/// calculaba una única vez por transición y lo que se veía animarse era la
+/// opacidad de cada LED ya encendido apagándose a la vez (un fundido), no
+/// el propio nivel bajando — con esto el límite encendido/apagado barre de
+/// derecha a izquierda fotograma a fotograma, como un volumen cayendo.
+private struct LEDStripRow: View, Animatable {
+    var level: Double
+    let isSettling: Bool
     private let segmentCount = 24
+
+    var animatableData: Double {
+        get { level }
+        set { level = newValue }
+    }
 
     var body: some View {
         HStack(spacing: 2) {
@@ -53,7 +79,7 @@ private struct LEDStripRow: View {
             }
         }
         .frame(height: 8)
-        .animation(.easeOut(duration: 0.15), value: level)
+        .animation(.easeOut(duration: isSettling ? vuSettleAnimationDuration : vuLiveAnimationDuration), value: level)
     }
 
     private func isLit(_ index: Int) -> Bool {
@@ -75,6 +101,7 @@ private struct LEDStripRow: View {
 private struct AnalogVUMeterView: View {
     let leftLevel: Double
     let rightLevel: Double
+    let isSettling: Bool
 
     /// Cada reloj es un cuadrado; el widget completo (los dos uno junto al
     /// otro) queda entonces rectangular en horizontal, nunca en vertical -
@@ -84,9 +111,9 @@ private struct AnalogVUMeterView: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            AnalogNeedleGauge(level: leftLevel, label: "L")
+            AnalogNeedleGauge(level: leftLevel, label: "L", isSettling: isSettling)
                 .frame(width: Self.gaugeSize, height: Self.gaugeSize)
-            AnalogNeedleGauge(level: rightLevel, label: "R")
+            AnalogNeedleGauge(level: rightLevel, label: "R", isSettling: isSettling)
                 .frame(width: Self.gaugeSize, height: Self.gaugeSize)
         }
         .frame(maxWidth: .infinity)
@@ -96,6 +123,7 @@ private struct AnalogVUMeterView: View {
 private struct AnalogNeedleGauge: View {
     let level: Double
     let label: String
+    let isSettling: Bool
 
     /// Barrido de la aguja en grados, con 0° apuntando hacia arriba (12 en
     /// punto) y positivo hacia la derecha, como las agujas de un reloj.
@@ -128,7 +156,7 @@ private struct AnalogNeedleGauge: View {
 
                 NeedleShape(level: level.clamped(0...1), pivot: pivot, radius: radius * 0.88)
                     .stroke(Color.primary, lineWidth: 1.5)
-                    .animation(.easeOut(duration: 0.25), value: level)
+                    .animation(.easeOut(duration: isSettling ? vuSettleAnimationDuration : vuLiveAnimationDuration), value: level)
 
                 Circle()
                     .fill(Color.primary)

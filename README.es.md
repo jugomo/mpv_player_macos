@@ -9,6 +9,13 @@
 App de barra de menú para macOS que reproduce vídeos de YouTube (u otras
 webs soportadas por `yt-dlp`) usando `mpv`.
 
+<p align="center">
+  <img src="promo/promo-video.png" alt="Reproduciendo un vídeo, con la barra de progreso, el botón de pantalla completa y el slider de volumen" width="49%">
+  <img src="promo/promo-audio.png" alt="Modo solo audio, mostrando el vúmetro digital" width="49%">
+</p>
+
+<p align="center"><sub>Montajes con datos de ejemplo, no son una reproducción real.</sub></p>
+
 ## Propiedad y colaboraciones
 
 Este proyecto ha sido creado por [@jugomo](https://github.com/jugomo) y

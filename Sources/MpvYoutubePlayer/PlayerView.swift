@@ -3,6 +3,7 @@ import SwiftUI
 struct PlayerView: View {
     @ObservedObject var viewModel: PlayerViewModel
     @ObservedObject private var loc = LocalizationManager.shared
+    @State private var isPlayFormExpanded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -95,7 +96,11 @@ struct PlayerView: View {
             }
 
             if viewModel.showVUMeters {
-                VUMeterView(leftLevel: viewModel.leftLevel, rightLevel: viewModel.rightLevel)
+                VUMeterView(
+                    leftLevel: viewModel.leftLevel,
+                    rightLevel: viewModel.rightLevel,
+                    isSettling: viewModel.isPaused || viewModel.currentlyPlayingItemID == nil
+                )
             }
 
             if let title = viewModel.currentlyPlayingTitle {
@@ -117,6 +122,44 @@ struct PlayerView: View {
                 dependencyBanner
             }
 
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isPlayFormExpanded.toggle()
+                }
+            } label: {
+                HStack {
+                    Text(loc.t(.playLinkLabel))
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(isPlayFormExpanded ? 180 : 0))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(loc.t(.playLinkTooltip))
+
+            if isPlayFormExpanded {
+                playForm
+            }
+        }
+        .padding(16)
+        .frame(width: 340)
+        .onAppear {
+            viewModel.refreshDependencyStatus()
+            viewModel.prefillURLFromClipboardIfEmpty()
+            if !viewModel.urlText.isEmpty {
+                isPlayFormExpanded = true
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var playForm: some View {
+        VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 10) {
                 TextField(loc.t(.urlPlaceholder), text: $viewModel.urlText)
                     .textFieldStyle(.plain)
@@ -177,12 +220,6 @@ struct PlayerView: View {
                 .keyboardShortcut(.defaultAction)
                 .disabled(!viewModel.status.isReady || viewModel.urlText.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-        }
-        .padding(16)
-        .frame(width: 340)
-        .onAppear {
-            viewModel.refreshDependencyStatus()
-            viewModel.prefillURLFromClipboardIfEmpty()
         }
     }
 
