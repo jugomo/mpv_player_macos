@@ -27,6 +27,20 @@ final class PlayerViewModel: ObservableObject {
     /// `time-pos` updates from mpv don't fight the drag and snap it back.
     private var isScrubbing = false
 
+    /// Volumen propio de mpv (0-100), independiente del volumen del sistema.
+    /// Se mantiene durante toda la sesión de la app (no se resetea entre
+    /// vídeos) y se aplica tanto al lanzar un mpv nuevo como, vía IPC, al de
+    /// la reproducción en curso.
+    @Published var volume: Double = 100 {
+        didSet { MPVLauncher.setVolume(volume) }
+    }
+
+    /// Nivel de señal normalizado (0...1) de los canales izquierdo/derecho,
+    /// usado por el vúmetro en modo solo audio. Se derivan del RMS en dB que
+    /// reporta mpv por IPC (ver `handleAudioLevelsChanged`).
+    @Published private(set) var leftLevel: Double = 0
+    @Published private(set) var rightLevel: Double = 0
+
     /// Set by the AppDelegate; called after a successful launch to close the popover.
     var onPlaybackStarted: (() -> Void)?
 
@@ -141,6 +155,8 @@ final class PlayerViewModel: ObservableObject {
         currentTimeSeconds = 0
         durationSeconds = 0
         isScrubbing = false
+        leftLevel = 0
+        rightLevel = 0
         onPauseStateChanged?(false)
         onPlaybackStopped?()
         // Salvaguarda: si mpv termina antes de llegar a mostrar vídeo (p.ej.
@@ -169,6 +185,30 @@ final class PlayerViewModel: ObservableObject {
 
     private func handleDurationChanged(_ seconds: Double) {
         durationSeconds = seconds
+    }
+
+    /// Mapea el RMS en dB (típicamente -inf...0) al rango 0...1 que consume
+    /// el vúmetro, recortando por debajo de -50dB (inaudible en la práctica)
+    /// para no desperdiciar recorrido de aguja/LEDs en niveles imperceptibles.
+    ///
+    /// `astats` mide el audio decodificado antes de que mpv aplique su
+    /// propiedad `volume` (confirmado variando el volumen en vivo mientras
+    /// se observaba `af-metadata/vu`: el RMS no se movía), así que hay que
+    /// sumar aquí la ganancia del volumen actual para que el vúmetro
+    /// refleje lo que realmente se oye, no el nivel "en bruto" de la fuente.
+    private static func normalizedLevel(fromDB db: Double, volumePercent: Double) -> Double {
+        guard db.isFinite, volumePercent > 0 else { return 0 }
+        let volumeGainDB = 20 * log10(volumePercent / 100)
+        let adjustedDB = db + volumeGainDB
+        guard adjustedDB.isFinite else { return 0 }
+        let minDB = -50.0
+        let clamped = max(minDB, min(0, adjustedDB))
+        return (clamped - minDB) / -minDB
+    }
+
+    private func handleAudioLevelsChanged(leftDB: Double, rightDB: Double) {
+        leftLevel = Self.normalizedLevel(fromDB: leftDB, volumePercent: volume)
+        rightLevel = Self.normalizedLevel(fromDB: rightDB, volumePercent: volume)
     }
 
     /// Called continuously while the user drags the seek bar, to reflect the
@@ -229,6 +269,7 @@ final class PlayerViewModel: ObservableObject {
                 quality: effectiveQuality,
                 mpvPath: mpvPath,
                 ytdlpPath: status.ytdlpPath,
+                volume: volume,
                 onPlaybackEnded: { [weak self] in self?.handlePlaybackEnded(token: requestToken) },
                 onPauseChanged: { [weak self] paused in self?.handlePauseChanged(paused) },
                 onTitleResolved: { [weak self] title in self?.handleTitleResolved(title) },
@@ -240,7 +281,8 @@ final class PlayerViewModel: ObservableObject {
                     self.onShowTitleToastRequested?(title)
                 },
                 onTimePositionChanged: { [weak self] seconds in self?.handleTimePositionChanged(seconds) },
-                onDurationChanged: { [weak self] seconds in self?.handleDurationChanged(seconds) }
+                onDurationChanged: { [weak self] seconds in self?.handleDurationChanged(seconds) },
+                onAudioLevelsChanged: { [weak self] left, right in self?.handleAudioLevelsChanged(leftDB: left, rightDB: right) }
             )
             playlistStore.add(urlString: targetURLString, quality: effectiveQuality)
             let playingItem = playlistStore.items.first(where: { $0.urlString == targetURLString })
@@ -249,6 +291,8 @@ final class PlayerViewModel: ObservableObject {
             currentTimeSeconds = 0
             durationSeconds = 0
             isScrubbing = false
+            leftLevel = 0
+            rightLevel = 0
             onPauseStateChanged?(false)
 
             // Si este mismo vídeo ya se reprodujo antes (aunque la URL exacta
@@ -314,6 +358,25 @@ final class PlayerViewModel: ObservableObject {
 
     var canPlayPrevious: Bool {
         playlistStore.item(before: currentlyPlayingItemID) != nil
+    }
+
+    /// Whether the item currently loaded in mpv has an actual video track
+    /// (as opposed to "Solo audio"), used to decide whether to show the
+    /// fullscreen control.
+    var currentlyPlayingHasVideo: Bool {
+        guard let id = currentlyPlayingItemID else { return false }
+        guard let item = playlistStore.items.first(where: { $0.id == id }) else { return false }
+        return item.quality != .audioOnly
+    }
+
+    func toggleFullscreen() {
+        MPVLauncher.toggleFullscreen()
+    }
+
+    /// Whether to show the VU meter: only while actively playing an
+    /// audio-only item (no video track to show instead).
+    var showVUMeters: Bool {
+        currentlyPlayingItemID != nil && !currentlyPlayingHasVideo
     }
 
     /// Detiene la reproducción actual, si hay alguna. Termina el proceso mpv

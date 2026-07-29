@@ -21,6 +21,10 @@ final class MPVIPCClient {
     /// polling manual con `get_property`.
     var onTimePositionChanged: ((Double) -> Void)?
     var onDurationChanged: ((Double) -> Void)?
+    /// Niveles RMS (en dB) de los canales izquierdo/derecho, leídos del filtro
+    /// de audio `astats` (ver `VideoQuality.mpvArguments`) para alimentar el
+    /// vúmetro en modo solo audio. `-inf` en silencio.
+    var onAudioLevelsChanged: ((Double, Double) -> Void)?
     /// Se dispara una única vez por reproducción, en el momento en que mpv
     /// realmente empieza a mostrar el vídeo (evento `playback-restart`), con
     /// el título ya resuelto. Lo usa la app para mostrar un aviso tipo toast
@@ -101,6 +105,13 @@ final class MPVIPCClient {
                     DispatchQueue.main.async { [weak self] in
                         self?.onDurationChanged?(seconds)
                     }
+                case "af-metadata/vu":
+                    guard let data = object["data"] as? [String: Any] else { continue }
+                    let left = Self.dBValue(data["lavfi.astats.1.RMS_level"])
+                    let right = Self.dBValue(data["lavfi.astats.2.RMS_level"])
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onAudioLevelsChanged?(left, right)
+                    }
                 default:
                     break
                 }
@@ -121,6 +132,14 @@ final class MPVIPCClient {
                 break
             }
         }
+    }
+
+    /// `astats` reporta cada valor como texto (p.ej. "-24.084350", o
+    /// "-inf"/"nan" en silencio absoluto); `Double.init?(String)` entiende
+    /// ambos directamente.
+    private static func dBValue(_ raw: Any?) -> Double {
+        guard let string = raw as? String, let value = Double(string), value.isFinite else { return -.infinity }
+        return value
     }
 
     func send(command: [Any]) {
@@ -144,6 +163,10 @@ final class MPVIPCClient {
 
     func observeDurationProperty() {
         send(command: ["observe_property", 4, "duration"])
+    }
+
+    func observeAudioLevelsProperty() {
+        send(command: ["observe_property", 5, "af-metadata/vu"])
     }
 
     func close() {

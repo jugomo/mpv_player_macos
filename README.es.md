@@ -26,15 +26,17 @@ propias licencias originales.
 ## Por qué usarla
 
 - **Reproduce solo el vídeo, sin tener el navegador abierto.** Sin Chrome/Safari corriendo de fondo, sin recomendaciones automáticas ni anuncios — solo `mpv` reproduciendo el vídeo.
-- **Modo solo audio para vídeos musicales.** Descarta la pista de vídeo por completo, ideal para escuchar de fondo con poco consumo.
 - **Genera la playlist automáticamente.** Cada vídeo que reproduces se añade a la playlist, con el título obtenido en segundo plano — no hace falta curarla a mano.
 - **Sin Homebrew ni dependencias que instalar.** `mpv` y `yt-dlp` van empaquetados dentro de la propia app — la descargas y funciona.
 - **Solo barra de menú, consumo mínimo.** Sin icono en el Dock, sin ventanas hasta que las necesitas.
 - **Teclas multimedia y Centro de Control funcionan de fábrica.** Salta al elemento siguiente/anterior de la playlist sin cambiar de ventana.
 - **No se limita a YouTube.** Funciona con cualquier web soportada por `yt-dlp` (cientos de sitios).
-- **Controles de reproducción en el propio popover.** Botones de anterior/reproducir-pausar/siguiente y el título del vídeo actual, sin tener que abrir la ventana de `mpv`.
+- **Controles de reproducción completos en el propio popover.** Anterior/reproducir-pausar/detener/siguiente, una barra de progreso con el tiempo transcurrido/restante, un botón de pantalla completa (cuando hay vídeo) y un slider de volumen independiente del volumen del sistema de macOS — sin tener que abrir la ventana de `mpv`.
+- **Modo solo audio a tu manera.** Descarta la pista de vídeo para escuchar de fondo con poco consumo, y elige en Ajustes si `mpv` abre su propia ventana (minimizada automáticamente) o ninguna — la reproducción sigue siendo controlable al 100% desde la app en ambos casos.
+- **Vúmetro al reproducir solo audio.** Un medidor de nivel estéreo junto a los controles, con agujas analógicas de verdad o tiras LED digitales — haz clic para cambiar de estilo — que reacciona al nivel real del audio y al volumen propio de la app.
 - **El icono de la barra de menú refleja lo que pasa.** Gira mientras un vídeo se está inicializando y parpadea entre reproducir/pausa mientras está pausado, para saber el estado de un vistazo sin abrir el popover.
 - **La playlist destaca el vídeo que se está reproduciendo.**
+- **Caché de vídeo y calidad de renderizado configurables**, para ajustar la latencia de arranque frente a la estabilidad de reproducción, y el uso de GPU/batería frente a la nitidez en pantalla completa.
 - **Interfaz en español/inglés**, cambiable desde Ajustes sin reiniciar la app.
 
 ## Requisitos
@@ -85,12 +87,18 @@ añádela en **Ajustes del Sistema → General → Elementos de inicio**.
 
 Mientras el vídeo carga, el icono de la barra de menú gira; vuelve a la
 normalidad en cuanto `mpv` empieza realmente a mostrarlo. Con algo ya en
-reproducción, usa los botones de anterior/reproducir-pausar/siguiente del
-popover (o las teclas multimedia / Centro de Control) para controlarlo —
-el botón de reproducir se convierte en pausa automáticamente, y el icono
-de la barra de menú parpadea entre reproducir/pausa mientras está en
-pausa. Abre **Playlist** para ver, reproducir de nuevo o exportar vídeos
-anteriores; el que se está reproduciendo aparece destacado.
+reproducción, usa los botones de anterior/reproducir-pausar/detener/
+siguiente del popover (o las teclas multimedia / Centro de Control) para
+controlarlo, arrastra la barra de progreso para saltar a una posición, y
+usa el slider de volumen para ajustar solo la reproducción de esta app —
+nunca toca el volumen del sistema de macOS. Si hay vídeo, aparece un botón
+de pantalla completa junto al de playlist; en modo solo audio aparece en
+su lugar un vúmetro junto al título (haz clic para alternar entre el
+estilo digital y el analógico). El botón de reproducir se convierte en
+pausa automáticamente, y el icono de la barra de menú parpadea entre
+reproducir/pausa mientras está en pausa. Abre **Playlist** para ver,
+reproducir de nuevo o exportar vídeos anteriores; el que se está
+reproduciendo aparece destacado.
 
 `mpv` y `yt-dlp` van empaquetados, así que normalmente esto no hace falta.
 Si ejecutas la app sin empaquetar durante el desarrollo y de verdad faltan,
@@ -100,15 +108,26 @@ oficial precargado — no se ejecuta el instalador de Homebrew de forma
 automática porque requiere tu contraseña de administrador de forma
 interactiva.
 
+## Ajustes
+
+Clic derecho en el icono de la barra de menú para abrir **Ajustes**:
+
+- **Idioma** — español/inglés, se aplica al momento sin reiniciar.
+- **Caché de vídeo** — "Arranque rápido" (5s de adelanto), "Reproducción estable" (30s), o una duración personalizada con el slider; controla `--demuxer-readahead-secs` de `mpv`.
+- **Renderizado de vídeo** — "Rendimiento" fuerza un escalador bilineal barato (menor uso de GPU/batería en pantalla completa) o "Calidad" deja el escalador más nítido por defecto de `mpv`.
+- **Ventana en modo solo audio** — activa si `mpv` abre su propia ventana (minimizada automáticamente) al reproducir solo audio, o ninguna; en ambos casos la reproducción sigue siendo controlable al 100% desde los botones, la barra de progreso y el vúmetro de la propia app.
+
 ## Estructura del proyecto
 
 - `Sources/MpvYoutubePlayer/DependencyChecker.swift` — resuelve el `mpv`/`yt-dlp` empaquetados dentro de la app, y si no están recurre a detectar `brew`, `mpv` y `yt-dlp` en el sistema
 - `Sources/MpvYoutubePlayer/HomebrewInstaller.swift` — instala paquetes con `brew install` / abre Terminal para instalar Homebrew (solo como respaldo)
 - `scripts/vendor_mpv.py` — copia `mpv` y el cierre de sus dylibs desde Homebrew al bundle de la app y reescribe sus rutas enlazadas a `@rpath`, invocado desde `build.sh`
-- `Sources/MpvYoutubePlayer/MPVLauncher.swift` — mapea calidad → formato de `yt-dlp` y lanza `mpv`; se comunica con él por su socket JSON IPC (`MPVIPCClient.swift`) para observar el estado de pausa/título y detectar el momento en que la reproducción realmente empieza
-- `Sources/MpvYoutubePlayer/PlayerView.swift` / `PlayerViewModel.swift` — UI del popover y estado de reproducción (carga, pausa, elemento actual)
+- `Sources/MpvYoutubePlayer/MPVLauncher.swift` — mapea calidad → formato de `yt-dlp` y lanza `mpv`; se comunica con él por su socket JSON IPC (`MPVIPCClient.swift`) para observar el estado de pausa/título/posición y detectar el momento en que la reproducción realmente empieza
+- `Sources/MpvYoutubePlayer/PlayerView.swift` / `PlayerViewModel.swift` — UI del popover y estado de reproducción (carga, pausa, elemento actual, posición de la barra de progreso, volumen, niveles del vúmetro)
+- `Sources/MpvYoutubePlayer/VUMeterView.swift` / `VUMeterSettings.swift` — el vúmetro estéreo digital/analógico que se muestra en modo solo audio, y su preferencia de estilo persistida; los niveles vienen del filtro de audio `astats` de `mpv`, leído por IPC
+- `Sources/MpvYoutubePlayer/CacheSettings.swift` / `RenderSettings.swift` / `PlaybackWindowSettings.swift` — estado persistido de Ajustes (caché de vídeo, calidad de renderizado, comportamiento de la ventana en solo audio), compartido entre `SettingsView` y `MPVLauncher`
 - `Sources/MpvYoutubePlayer/PlaylistView.swift` — ventana de playlist, destaca el elemento que se está reproduciendo
-- `Sources/MpvYoutubePlayer/SettingsView.swift` — selector de idioma
+- `Sources/MpvYoutubePlayer/SettingsView.swift` — ajustes de idioma, caché, renderizado y ventana en modo solo audio
 - `Sources/MpvYoutubePlayer/AboutView.swift` — ventana de Ayuda/Acerca de
 - `Sources/MpvYoutubePlayer/TitleToastView.swift` — el aviso "reproduciendo ahora" que aparece fuera de la ventana de `mpv`
 - `Sources/MpvYoutubePlayer/Localization.swift` — tabla de textos ES/EN propia, cambiable en caliente desde Ajustes

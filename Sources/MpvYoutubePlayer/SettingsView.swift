@@ -4,6 +4,7 @@ struct SettingsView: View {
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var cache = CacheSettingsManager.shared
     @ObservedObject private var render = RenderSettingsManager.shared
+    @ObservedObject private var playbackWindow = PlaybackWindowSettingsManager.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -70,9 +71,20 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(loc.t(.audioOnlyWindowToggleLabel), isOn: $playbackWindow.hideWindowForAudioOnly)
+
+                Text(loc.t(.audioOnlyWindowHint))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             Spacer()
         }
         .padding(20)
-        .frame(width: 480, height: 380)
+        .frame(width: 480, height: 440)
     }
 }

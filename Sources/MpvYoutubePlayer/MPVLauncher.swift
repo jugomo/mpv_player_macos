@@ -84,20 +84,46 @@ enum VideoQuality: String, CaseIterable, Identifiable, Codable {
         ]
     }
 
-    func mpvArguments(for url: String) -> [String] {
+    func mpvArguments(for url: String, hideWindowForAudioOnly: Bool) -> [String] {
         var args = ["--ytdl-format=\(ytdlFormat)"]
         if self == .audioOnly {
-            // Sin --force-window mpv no abre ninguna ventana al no haber pista
-            // de vídeo, dejando la reproducción sin controles y "huérfana".
-            // --force-window fuerza su ventana con el OSC estándar (play/pausa,
-            // barra de progreso, volumen) para poder controlar y detener el audio.
             args.append("--no-video")
-            args.append("--force-window=yes")
-            // La ventana arranca minimizada (ver `minimizeWindowOnReady` en
-            // MPVLauncher.play): --window-minimized=yes como flag de arranque
-            // no funciona de forma fiable en macOS (el VO de Cocoa lo ignora
-            // al iniciar, confirmado probando la propiedad tras el arranque),
-            // así que hay que aplicarlo por IPC una vez la ventana ya existe.
+            // Filtro `astats` de libavfilter: no altera el audio (solo lo
+            // analiza), pero expone sus métricas como metadata legible por
+            // IPC en la propiedad `af-metadata/vu` (observada en
+            // connectIPC), incluyendo el nivel RMS por canal que alimenta el
+            // vúmetro. `reset` se mide en fotogramas, no en segundos (no hay
+            // forma de pedir "cada N ms" directamente): con el valor por
+            // defecto (0, sin reset) `RMS_level` es la media acumulada desde
+            // el inicio de la reproducción, así que tras los primeros
+            // segundos cada fotograma nuevo apenas mueve la media y el
+            // vúmetro se queda "congelado" sin reflejar el nivel real.
+            // `reset=1` recalcula desde cero en cada fotograma, dejando el
+            // suavizado visual (ballistics de aguja/LEDs) enteramente a la
+            // animación en la UI, que es donde debe vivir.
+            args.append("--af=@vu:lavfi=[astats=metadata=1:reset=1]")
+            if hideWindowForAudioOnly {
+                // El usuario ha elegido no usar ventana separada. mpv no
+                // tiene ningún flag "--no-window" (falla con "option not
+                // found" en 0.41): basta con NO pasar --force-window, ya
+                // que sin pista de vídeo mpv simplemente no crea ninguna
+                // ventana por su cuenta. Los controles de la app
+                // (play/pausa, seek, siguiente) ya hablan con mpv por IPC
+                // sin necesidad de ninguna ventana.
+            } else {
+                // Sin --force-window mpv no abre ninguna ventana al no haber
+                // pista de vídeo, dejando la reproducción sin controles y
+                // "huérfana". --force-window fuerza su ventana con el OSC
+                // estándar (play/pausa, barra de progreso, volumen) para
+                // poder controlar y detener el audio.
+                args.append("--force-window=yes")
+                // La ventana arranca minimizada (ver `minimizeWindowOnReady`
+                // en MPVLauncher.play): --window-minimized=yes como flag de
+                // arranque no funciona de forma fiable en macOS (el VO de
+                // Cocoa lo ignora al iniciar, confirmado probando la
+                // propiedad tras el arranque), así que hay que aplicarlo por
+                // IPC una vez la ventana ya existe.
+            }
         }
         args.append(url)
         return args
@@ -147,12 +173,14 @@ enum MPVLauncher {
         quality: VideoQuality,
         mpvPath: String,
         ytdlpPath: String?,
+        volume: Double = 100,
         onPlaybackEnded: (() -> Void)? = nil,
         onPauseChanged: ((Bool) -> Void)? = nil,
         onTitleResolved: ((String) -> Void)? = nil,
         onPlaybackReady: ((String) -> Void)? = nil,
         onTimePositionChanged: ((Double) -> Void)? = nil,
-        onDurationChanged: ((Double) -> Void)? = nil
+        onDurationChanged: ((Double) -> Void)? = nil,
+        onAudioLevelsChanged: ((Double, Double) -> Void)? = nil
     ) throws {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: trimmed),
@@ -190,8 +218,16 @@ enum MPVLauncher {
             // hardware). "auto" usa VideoToolbox cuando el códec lo permite
             // y cae a software automáticamente si no.
             "--hwdec=auto",
+            // Volumen propio de mpv (filtro software sobre el audio decodificado),
+            // no toca el volumen del sistema: cada reproducción arranca con el
+            // último valor elegido en el slider de la app.
+            "--volume=\(Int(volume.rounded()))",
         ] + RenderSettingsManager.shared.quality.mpvArguments
-          + CacheSettingsManager.shared.mpvArguments + quality.mpvArguments(for: trimmed)
+          + CacheSettingsManager.shared.mpvArguments
+          + quality.mpvArguments(
+              for: trimmed,
+              hideWindowForAudioOnly: PlaybackWindowSettingsManager.shared.hideWindowForAudioOnly
+          )
         // mpv no acumula --script-opts si el flag se repite: la última
         // aparición reemplaza a las anteriores. Por eso se fusionan todas
         // las claves en un único flag antes de lanzar el proceso.
@@ -254,7 +290,9 @@ enum MPVLauncher {
                 onPlaybackReady: onPlaybackReady,
                 onTimePositionChanged: onTimePositionChanged,
                 onDurationChanged: onDurationChanged,
+                onAudioLevelsChanged: onAudioLevelsChanged,
                 minimizeWindowOnReady: quality == .audioOnly
+                    && !PlaybackWindowSettingsManager.shared.hideWindowForAudioOnly
             )
         } catch {
             throw MPVLauncherError.launchFailed(error.localizedDescription)
@@ -270,6 +308,7 @@ enum MPVLauncher {
         onPlaybackReady: ((String) -> Void)?,
         onTimePositionChanged: ((Double) -> Void)?,
         onDurationChanged: ((Double) -> Void)?,
+        onAudioLevelsChanged: ((Double, Double) -> Void)?,
         minimizeWindowOnReady: Bool,
         attempt: Int = 0
     ) {
@@ -289,10 +328,12 @@ enum MPVLauncher {
             }
             client.onTimePositionChanged = onTimePositionChanged
             client.onDurationChanged = onDurationChanged
+            client.onAudioLevelsChanged = onAudioLevelsChanged
             client.observePauseProperty()
             client.observeMediaTitleProperty()
             client.observeTimePositionProperty()
             client.observeDurationProperty()
+            client.observeAudioLevelsProperty()
             processesLock.lock()
             currentIPCClient = client
             processesLock.unlock()
@@ -305,6 +346,7 @@ enum MPVLauncher {
                     onPlaybackReady: onPlaybackReady,
                     onTimePositionChanged: onTimePositionChanged,
                     onDurationChanged: onDurationChanged,
+                    onAudioLevelsChanged: onAudioLevelsChanged,
                     minimizeWindowOnReady: minimizeWindowOnReady,
                     attempt: attempt + 1
                 )
@@ -336,6 +378,25 @@ enum MPVLauncher {
         let client = currentIPCClient
         processesLock.unlock()
         client?.send(command: ["set_property", "time-pos", seconds])
+    }
+
+    /// Alterna pantalla completa del mpv actual a través del IPC server. No
+    /// hace nada si no hay ningún mpv en marcha.
+    static func toggleFullscreen() {
+        processesLock.lock()
+        let client = currentIPCClient
+        processesLock.unlock()
+        client?.send(command: ["cycle", "fullscreen"])
+    }
+
+    /// Ajusta el volumen del mpv actual (0-100) a través del IPC server. Es
+    /// el volumen propio de mpv (filtro sobre el audio ya decodificado), no
+    /// el volumen del sistema, así que solo afecta a esta reproducción.
+    static func setVolume(_ volume: Double) {
+        processesLock.lock()
+        let client = currentIPCClient
+        processesLock.unlock()
+        client?.send(command: ["set_property", "volume", volume])
     }
 
     /// Termina todos los procesos mpv lanzados por esta app que sigan vivos.

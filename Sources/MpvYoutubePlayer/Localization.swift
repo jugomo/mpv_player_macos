@@ -33,6 +33,8 @@ enum LKey {
     case invalidURLError, mpvLaunchFailedPrefix
     case cacheSectionTitle, cacheDurationLabel
     case renderSectionTitle, renderQualityHint
+    case audioOnlyWindowToggleLabel, audioOnlyWindowHint
+    case fullscreenTooltip, volumeTooltip, vuMeterToggleTooltip
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -135,5 +137,18 @@ final class LocalizationManager: ObservableObject {
             "Rendimiento reduce el uso de GPU/batería en pantalla completa; Calidad usa el escalador de mayor nitidez de mpv.",
             "Performance lowers GPU/battery use in fullscreen; Quality uses mpv's sharper scaler."
         ),
+
+        .audioOnlyWindowToggleLabel: (
+            "No usar ventana separada al reproducir solo audio",
+            "Don't use a separate window when playing audio only"
+        ),
+        .audioOnlyWindowHint: (
+            "Si está activado, el audio se controla desde los controles de esta app (reproducir, pausa, siguiente, buscar) en vez de abrir la ventana de mpv.",
+            "When enabled, audio is controlled from this app's own controls (play, pause, next, seek) instead of opening mpv's window."
+        ),
+
+        .fullscreenTooltip: ("Pantalla completa", "Fullscreen"),
+        .volumeTooltip: ("Volumen (solo esta reproducción)", "Volume (this playback only)"),
+        .vuMeterToggleTooltip: ("Clic para cambiar de estilo (digital/analógico)", "Click to switch style (digital/analog)"),
     ]
 }

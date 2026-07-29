@@ -33,7 +33,18 @@ struct PlayerView: View {
                 }
                 .buttonStyle(.borderless)
                 .help(loc.t(.playlist))
-                .padding(.trailing, 8)
+
+                if viewModel.currentlyPlayingHasVideo {
+                    Button {
+                        viewModel.toggleFullscreen()
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(loc.t(.fullscreenTooltip))
+                }
+
+                Divider().frame(height: 14).padding(.horizontal, 2)
 
                 Button {
                     viewModel.playPrevious()
@@ -47,7 +58,7 @@ struct PlayerView: View {
                 Button {
                     viewModel.togglePrimaryPlayPause()
                 } label: {
-                    Image(systemName: viewModel.isCurrentlyPlaying ? "pause.circle.fill" : "play.circle.fill")
+                    Image(systemName: viewModel.isCurrentlyPlaying ? "pause.fill" : "play.fill")
                 }
                 .buttonStyle(.borderless)
                 .disabled(!viewModel.status.isReady || (viewModel.currentlyPlayingItemID == nil && !viewModel.canPlayPrimary))
@@ -71,7 +82,20 @@ struct PlayerView: View {
                 .disabled(!viewModel.status.isReady || !viewModel.canPlayNext)
                 .help(loc.t(.nextTooltip))
 
+                HStack(spacing: 4) {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Slider(value: $viewModel.volume, in: 0...100)
+                        .frame(width: 70)
+                }
+                .help(loc.t(.volumeTooltip))
+
                 Spacer()
+            }
+
+            if viewModel.showVUMeters {
+                VUMeterView(leftLevel: viewModel.leftLevel, rightLevel: viewModel.rightLevel)
             }
 
             if let title = viewModel.currentlyPlayingTitle {
@@ -155,7 +179,7 @@ struct PlayerView: View {
             }
         }
         .padding(16)
-        .frame(width: 320)
+        .frame(width: 340)
         .onAppear {
             viewModel.refreshDependencyStatus()
             viewModel.prefillURLFromClipboardIfEmpty()

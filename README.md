@@ -26,15 +26,17 @@ licenses.
 ## Why use it
 
 - **Play video without a browser tab open.** No Chrome/Safari running in the background, no autoplay recommendations, no ads — just `mpv` playing the video.
-- **Audio-only mode for music videos.** Strips the video stream entirely for lightweight background listening.
 - **Playlist built automatically.** Every video you play gets added to a playlist, with the title fetched in the background — no manual curation needed.
 - **No Homebrew or dependencies to install.** `mpv` and `yt-dlp` ship bundled inside the app itself — download it and it works.
 - **Menu-bar only, near-zero footprint.** No Dock icon, no window until you need one.
 - **Keyboard media keys and Control Center work out of the box.** Skip to the next/previous playlist item without switching windows.
 - **Not limited to YouTube.** Anything `yt-dlp` supports (hundreds of sites) works the same way.
-- **Playback controls right in the popover.** Previous/play-pause/next buttons and the current video's title, no need to open `mpv`'s own window.
+- **Full playback controls right in the popover.** Previous/play-pause/stop/next, a seek bar with elapsed/remaining time, a fullscreen toggle (when there's video), and a volume slider that's independent from macOS's system volume — no need to open `mpv`'s own window.
+- **Audio-only mode, your way.** Strip the video stream for lightweight background listening, and choose in Settings whether `mpv` opens its own (auto-minimized) window or none at all — playback stays fully controllable from the app either way.
+- **VU meters while playing audio-only.** A stereo level meter next to the controls, real analog needles or digital LED bars — click it to switch style — reacting to the actual audio level and to the app's own volume slider.
 - **Menu bar icon reflects what's happening.** It spins while a video is initializing and blinks between play/pause while paused, so you can tell at a glance without opening the popover.
 - **Playlist highlights what's currently playing.**
+- **Configurable video cache and render quality**, to tune startup latency vs. playback stability, and GPU/battery usage vs. sharpness in fullscreen.
 - **Spanish/English UI**, switchable from Settings without restarting the app.
 
 ## Requirements
@@ -83,11 +85,16 @@ menu-bar-only app). To have it launch automatically at login, add it in
 
 While a video loads, the menu bar icon spins; it switches back as soon as
 `mpv` actually starts showing it. Once something is playing, use the
-previous/play-pause/next buttons in the popover (or the keyboard media
-keys / Control Center) to control it — the play button turns into a pause
-button automatically, and the menu bar icon blinks between play/pause
-while paused. Open **Playlist** to see, replay or export past videos; the one currently
-playing is highlighted.
+previous/play-pause/stop/next buttons in the popover (or the keyboard
+media keys / Control Center) to control it, drag the seek bar to jump to a
+position, and use the volume slider to adjust this app's playback only —
+it never touches macOS's system volume. If there's video, a fullscreen
+button shows up next to the playlist button; in audio-only mode a VU
+meter shows up instead, next to the title (click it to switch between the
+digital and analog styles). The play button turns into a pause button
+automatically, and the menu bar icon blinks between play/pause while
+paused. Open **Playlist** to see, replay or export past videos; the one
+currently playing is highlighted.
 
 `mpv` and `yt-dlp` are bundled, so this normally isn't needed. If you're
 running the app unpackaged during development and they're genuinely
@@ -96,15 +103,26 @@ Homebrew. If Homebrew isn't installed either, Terminal.app opens with the
 official installer preloaded — the Homebrew installer isn't run
 automatically because it requires your admin password interactively.
 
+## Settings
+
+Right-click the menu bar icon to open **Settings**:
+
+- **Language** — Spanish/English, applied immediately without restarting.
+- **Video cache** — "Fast start" (5s readahead), "Stable playback" (30s), or a custom duration via slider; controls `mpv`'s `--demuxer-readahead-secs`.
+- **Video rendering** — "Performance" forces a cheap bilinear scaler (lower GPU/battery use in fullscreen) or "Quality" keeps `mpv`'s sharper default scaler.
+- **Audio-only window** — toggle whether `mpv` opens its own (auto-minimized) window when playing audio-only, or no window at all; either way, playback stays fully controllable from the app's own buttons, seek bar and VU meter.
+
 ## Project structure
 
 - `Sources/MpvYoutubePlayer/DependencyChecker.swift` — resolves the bundled `mpv`/`yt-dlp` inside the app, falling back to detecting `brew`, `mpv` and `yt-dlp` on the system
 - `Sources/MpvYoutubePlayer/HomebrewInstaller.swift` — installs packages with `brew install` / opens Terminal to install Homebrew (fallback path only)
 - `scripts/vendor_mpv.py` — copies `mpv` and its dylib closure from Homebrew into the app bundle and rewrites their linked paths to `@rpath`, called from `build.sh`
-- `Sources/MpvYoutubePlayer/MPVLauncher.swift` — maps quality → `yt-dlp` format and launches `mpv`; talks to it over its JSON IPC socket (`MPVIPCClient.swift`) to observe pause state/title and detect the moment playback actually starts
-- `Sources/MpvYoutubePlayer/PlayerView.swift` / `PlayerViewModel.swift` — popover UI and playback state (loading, paused, current item)
+- `Sources/MpvYoutubePlayer/MPVLauncher.swift` — maps quality → `yt-dlp` format and launches `mpv`; talks to it over its JSON IPC socket (`MPVIPCClient.swift`) to observe pause state/title/time position and detect the moment playback actually starts
+- `Sources/MpvYoutubePlayer/PlayerView.swift` / `PlayerViewModel.swift` — popover UI and playback state (loading, paused, current item, seek position, volume, VU meter levels)
+- `Sources/MpvYoutubePlayer/VUMeterView.swift` / `VUMeterSettings.swift` — the digital/analog stereo VU meter shown during audio-only playback, and its persisted style preference; levels come from `mpv`'s `astats` audio filter, read over IPC
+- `Sources/MpvYoutubePlayer/CacheSettings.swift` / `RenderSettings.swift` / `PlaybackWindowSettings.swift` — persisted Settings state (video cache, render quality, audio-only window behavior), shared between `SettingsView` and `MPVLauncher`
 - `Sources/MpvYoutubePlayer/PlaylistView.swift` — playlist window, highlights the currently playing item
-- `Sources/MpvYoutubePlayer/SettingsView.swift` — language picker
+- `Sources/MpvYoutubePlayer/SettingsView.swift` — language, cache, render and audio-only window settings
 - `Sources/MpvYoutubePlayer/AboutView.swift` — About/Help window
 - `Sources/MpvYoutubePlayer/TitleToastView.swift` — the "now playing" toast shown outside `mpv`'s window
 - `Sources/MpvYoutubePlayer/Localization.swift` — hand-rolled ES/EN string table, switchable at runtime from Settings
