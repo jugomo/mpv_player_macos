@@ -5,95 +5,154 @@ struct PlayerView: View {
     @ObservedObject private var loc = LocalizationManager.shared
     @State private var isPlayFormExpanded = false
 
+    private static let windowWidth: CGFloat = 420
+    private static let contentPadding: CGFloat = 20
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            ZStack {
-                Text(loc.t(.appTitle))
-                    .font(.headline)
-                    .frame(maxWidth: .infinity, alignment: .center)
+            VStack(alignment: .leading, spacing: 12) {
+                ZStack {
+                    Text(loc.t(.appTitle))
+                        .font(.headline)
+                        .frame(maxWidth: .infinity, alignment: .center)
 
-                HStack {
-                    Spacer()
-                    Button {
-                        viewModel.onShowAboutRequested?()
-                    } label: {
-                        Image(systemName: "questionmark.circle")
+                    HStack {
+                        Spacer()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.3)) {
+                                isPlayFormExpanded.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(loc.t(.playLinkLabel))
+                                    .font(.subheadline)
+                                Image(systemName: "chevron.down")
+                                    .font(.caption)
+                                    .rotationEffect(.degrees(isPlayFormExpanded ? 180 : 0))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .help(loc.t(.playLinkTooltip))
                     }
-                    .buttonStyle(.borderless)
-                    .help(loc.t(.help))
+                }
+
+                if isPlayFormExpanded {
+                    playForm
+                        .transition(.opacity)
                 }
             }
 
             Divider()
 
-            HStack(alignment: .top, spacing: 10) {
-                Button {
-                    viewModel.onOpenPlaylistRequested?()
-                } label: {
-                    Image(systemName: "list.bullet")
-                }
-                .buttonStyle(.borderless)
-                .help(loc.t(.playlist))
-
-                if viewModel.currentlyPlayingHasVideo {
-                    Button {
-                        viewModel.toggleFullscreen()
-                    } label: {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+            if viewModel.showVUMeters, let thumbnailURL = viewModel.currentlyPlayingThumbnailURL {
+                HStack(alignment: .top, spacing: 20) {
+                    AsyncImage(url: thumbnailURL) { phase in
+                        if case .success(let image) = phase {
+                            image.resizable().aspectRatio(contentMode: .fill)
+                        } else {
+                            Color.secondary.opacity(0.1)
+                        }
                     }
-                    .buttonStyle(.borderless)
-                    .help(loc.t(.fullscreenTooltip))
+                    .frame(width: Self.windowWidth * 0.25)
+                    .frame(maxHeight: .infinity)
+                    .clipped()
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    playbackInfoColumn
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-
-                Divider().frame(height: 14).padding(.horizontal, 2)
-
-                Button {
-                    viewModel.playPrevious()
-                } label: {
-                    Image(systemName: "backward.end.fill")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!viewModel.status.isReady || !viewModel.canPlayPrevious)
-                .help(loc.t(.previousTooltip))
-
-                Button {
-                    viewModel.togglePrimaryPlayPause()
-                } label: {
-                    Image(systemName: viewModel.isCurrentlyPlaying ? "pause.fill" : "play.fill")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!viewModel.status.isReady || (viewModel.currentlyPlayingItemID == nil && !viewModel.canPlayPrimary))
-                .help(viewModel.isCurrentlyPlaying ? loc.t(.pauseTooltip) : loc.t(.playTooltip))
-
-                Button {
-                    viewModel.stop()
-                } label: {
-                    Image(systemName: "stop.fill")
-                }
-                .buttonStyle(.borderless)
-                .disabled(viewModel.currentlyPlayingItemID == nil)
-                .help(loc.t(.stopTooltip))
-
-                Button {
-                    viewModel.playNext()
-                } label: {
-                    Image(systemName: "forward.end.fill")
-                }
-                .buttonStyle(.borderless)
-                .disabled(!viewModel.status.isReady || !viewModel.canPlayNext)
-                .help(loc.t(.nextTooltip))
-
-                HStack(spacing: 4) {
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    Slider(value: $viewModel.volume, in: 0...100)
-                        .frame(width: 70)
-                }
-                .help(loc.t(.volumeTooltip))
-
-                Spacer()
+            } else {
+                playbackInfoColumn
             }
+
+            if !viewModel.status.isReady {
+                dependencyBanner
+            }
+        }
+        .padding(Self.contentPadding)
+        .frame(width: Self.windowWidth)
+        .onAppear {
+            viewModel.refreshDependencyStatus()
+            viewModel.prefillURLFromClipboardIfEmpty()
+        }
+    }
+
+    @ViewBuilder
+    private var controlsRow: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Button {
+                viewModel.onOpenPlaylistRequested?()
+            } label: {
+                Image(systemName: "list.bullet")
+            }
+            .buttonStyle(.borderless)
+            .help(loc.t(.playlist))
+
+            if viewModel.currentlyPlayingHasVideo {
+                Button {
+                    viewModel.toggleFullscreen()
+                } label: {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right")
+                }
+                .buttonStyle(.borderless)
+                .help(loc.t(.fullscreenTooltip))
+            }
+
+            Divider().frame(height: 14).padding(.horizontal, 2)
+
+            Button {
+                viewModel.playPrevious()
+            } label: {
+                Image(systemName: "backward.end.fill")
+            }
+            .buttonStyle(.borderless)
+            .disabled(!viewModel.status.isReady || !viewModel.canPlayPrevious)
+            .help(loc.t(.previousTooltip))
+
+            Button {
+                viewModel.togglePrimaryPlayPause()
+            } label: {
+                Image(systemName: viewModel.isCurrentlyPlaying ? "pause.fill" : "play.fill")
+            }
+            .buttonStyle(.borderless)
+            .disabled(!viewModel.status.isReady || (viewModel.currentlyPlayingItemID == nil && !viewModel.canPlayPrimary))
+            .help(viewModel.isCurrentlyPlaying ? loc.t(.pauseTooltip) : loc.t(.playTooltip))
+
+            Button {
+                viewModel.stop()
+            } label: {
+                Image(systemName: "stop.fill")
+            }
+            .buttonStyle(.borderless)
+            .disabled(viewModel.currentlyPlayingItemID == nil)
+            .help(loc.t(.stopTooltip))
+
+            Button {
+                viewModel.playNext()
+            } label: {
+                Image(systemName: "forward.end.fill")
+            }
+            .buttonStyle(.borderless)
+            .disabled(!viewModel.status.isReady || !viewModel.canPlayNext)
+            .help(loc.t(.nextTooltip))
+
+            HStack(spacing: 4) {
+                Image(systemName: "speaker.wave.2.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                Slider(value: $viewModel.volume, in: 0...100)
+                    .frame(width: 70)
+            }
+            .help(loc.t(.volumeTooltip))
+
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private var playbackInfoColumn: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            controlsRow
 
             if viewModel.showVUMeters {
                 VUMeterView(
@@ -114,45 +173,6 @@ struct PlayerView: View {
 
             if viewModel.currentlyPlayingItemID != nil {
                 seekBar
-            }
-
-            Divider()
-
-            if !viewModel.status.isReady {
-                dependencyBanner
-            }
-
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isPlayFormExpanded.toggle()
-                }
-            } label: {
-                HStack {
-                    Text(loc.t(.playLinkLabel))
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "chevron.down")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isPlayFormExpanded ? 180 : 0))
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(loc.t(.playLinkTooltip))
-
-            if isPlayFormExpanded {
-                playForm
-            }
-        }
-        .padding(16)
-        .frame(width: 340)
-        .onAppear {
-            viewModel.refreshDependencyStatus()
-            viewModel.prefillURLFromClipboardIfEmpty()
-            if !viewModel.urlText.isEmpty {
-                isPlayFormExpanded = true
             }
         }
     }

@@ -64,9 +64,6 @@ final class PlayerViewModel: ObservableObject {
     /// Set by the AppDelegate; called when the user wants to open the playlist screen.
     var onOpenPlaylistRequested: (() -> Void)?
 
-    /// Set by the AppDelegate; called when the user taps the help button to open the About/Help dialog.
-    var onShowAboutRequested: (() -> Void)?
-
     /// Set by the AppDelegate; called once playback actually starts, with the
     /// resolved title, so it can show a system-level "now playing" toast
     /// (outside mpv's own window).
@@ -416,6 +413,16 @@ final class PlayerViewModel: ObservableObject {
         guard let id = currentlyPlayingItemID else { return false }
         guard let item = playlistStore.items.first(where: { $0.id == id }) else { return false }
         return item.quality != .audioOnly
+    }
+
+    /// URL de la miniatura de YouTube del ítem actualmente en reproducción,
+    /// usada como carátula cuando se reproduce en modo "Solo audio". `nil`
+    /// si la URL no es de YouTube o no se pudo extraer el video ID.
+    var currentlyPlayingThumbnailURL: URL? {
+        guard let id = currentlyPlayingItemID else { return nil }
+        guard let item = playlistStore.items.first(where: { $0.id == id }) else { return nil }
+        guard let videoID = PlaylistStore.youTubeVideoID(from: item.urlString) else { return nil }
+        return URL(string: "https://img.youtube.com/vi/\(videoID)/hqdefault.jpg")
     }
 
     func toggleFullscreen() {

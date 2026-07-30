@@ -52,7 +52,7 @@ final class PlaylistStore: ObservableObject {
     /// Extrae el ID de vídeo de una URL de YouTube en cualquiera de sus
     /// formatos habituales (watch, youtu.be, shorts, embed, live),
     /// ignorando el resto de parámetros de query.
-    private static func youTubeVideoID(from urlString: String) -> String? {
+    static func youTubeVideoID(from urlString: String) -> String? {
         guard let components = URLComponents(string: urlString),
               let host = components.host?.lowercased() else { return nil }
 

@@ -54,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // ajustando su alto al contenido real en todo momento.
         playerHostingController.sizingOptions = [.preferredContentSize]
         popover = NSPopover()
-        popover.behavior = .transient
+        popover.behavior = Self.popoverBehavior
         popover.contentViewController = playerHostingController
 
         viewModel.onPlaybackStarted = { [weak self] in
@@ -70,9 +70,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         viewModel.onOpenPlaylistRequested = { [weak self] in
             self?.showPlaylistWindow()
-        }
-        viewModel.onShowAboutRequested = { [weak self] in
-            self?.showAboutWindow()
         }
         viewModel.onShowTitleToastRequested = { [weak self] title in
             self?.showTitleToast(title)
@@ -365,6 +362,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         playlistItem.image = NSImage(systemSymbolName: "music.note.list", accessibilityDescription: loc.t(.playlist))
         menu.addItem(playlistItem)
         menu.addItem(NSMenuItem(title: loc.t(.settings), action: #selector(openSettings), keyEquivalent: ""))
+        let helpItem = NSMenuItem(title: loc.t(.help), action: #selector(openHelp), keyEquivalent: "")
+        helpItem.image = NSImage(systemSymbolName: "questionmark.circle", accessibilityDescription: loc.t(.help))
+        menu.addItem(helpItem)
         menu.addItem(.separator())
         let quitItem = NSMenuItem(title: loc.t(.quit), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: loc.t(.quit))
@@ -385,6 +385,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showSettingsWindow()
     }
 
+    @objc private func openHelp() {
+        showAboutWindow()
+    }
+
     @objc private func quitApp() {
         NSApp.terminate(nil)
     }
@@ -398,10 +402,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             closePopover()
         } else {
             viewModel.refreshDependencyStatus()
+            popover.behavior = Self.popoverBehavior
             popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
             repositionPopoverBelowStatusItem(sender)
         }
+    }
+
+    /// Con `closeWindowsOnPlay` desactivado, el usuario quiere que la ventana
+    /// principal quede siempre visible aunque pierda el foco (p. ej. al
+    /// interactuar con la ventana de mpv), cerrándola solo a mano desde el
+    /// ícono de la barra de menú. `.transient` (el comportamiento normal de
+    /// un `NSPopover`) la cierra automáticamente ante cualquier clic o
+    /// activación fuera de ella, así que hay que pasar a `.applicationDefined`
+    /// para desactivar ese auto-cierre; con la opción activada se mantiene
+    /// `.transient`, el comportamiento de siempre.
+    private static var popoverBehavior: NSPopover.Behavior {
+        PlaybackWindowSettingsManager.shared.closeWindowsOnPlay ? .transient : .applicationDefined
     }
 
     /// Con "ocultar y mostrar automáticamente la barra de menús" activo,
@@ -410,13 +427,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// dejando un hueco del tamaño de esa barra entre el ícono y el globo.
     /// Se corrige reubicando la ventana del globo a mano, usando el frame
     /// real y actual del botón en coordenadas de pantalla.
+    ///
+    /// Al recalcular el origen a mano perdemos el ajuste automático que
+    /// `NSPopover` aplica para no salirse de la pantalla: si el ícono está
+    /// cerca del borde derecho, centrar el popover bajo el botón lo hace
+    /// asomar fuera del `visibleFrame` y quedar recortado. Se limita el eje
+    /// X al rango válido de la pantalla del botón para que el globo quede
+    /// siempre completo, aunque eso desplace la punta/flecha lejos del centro
+    /// del ícono en ese caso.
     private func repositionPopoverBelowStatusItem(_ sender: NSStatusBarButton) {
         guard let buttonWindow = sender.window,
-              let popoverWindow = popover.contentViewController?.view.window else { return }
+              let popoverWindow = popover.contentViewController?.view.window,
+              let screen = buttonWindow.screen ?? NSScreen.main else { return }
         let buttonFrameOnScreen = buttonWindow.convertToScreen(sender.convert(sender.bounds, to: nil))
         let popoverSize = popoverWindow.frame.size
+        let idealX = buttonFrameOnScreen.midX - popoverSize.width / 2
+        let minX = screen.visibleFrame.minX
+        let maxX = screen.visibleFrame.maxX - popoverSize.width
         let origin = NSPoint(
-            x: buttonFrameOnScreen.midX - popoverSize.width / 2,
+            x: min(max(idealX, minX), maxX),
             y: buttonFrameOnScreen.minY - popoverSize.height
         )
         popoverWindow.setFrameOrigin(origin)
