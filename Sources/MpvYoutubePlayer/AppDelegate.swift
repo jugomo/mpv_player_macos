@@ -361,15 +361,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showContextMenu() {
         let loc = LocalizationManager.shared
         let menu = NSMenu()
+        let playlistItem = NSMenuItem(title: loc.t(.playlist), action: #selector(openPlaylist), keyEquivalent: "")
+        playlistItem.image = NSImage(systemSymbolName: "music.note.list", accessibilityDescription: loc.t(.playlist))
+        menu.addItem(playlistItem)
         menu.addItem(NSMenuItem(title: loc.t(.settings), action: #selector(openSettings), keyEquivalent: ""))
         menu.addItem(.separator())
-        menu.addItem(NSMenuItem(title: loc.t(.quit), action: #selector(quitApp), keyEquivalent: "q"))
+        let quitItem = NSMenuItem(title: loc.t(.quit), action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: loc.t(.quit))
+        menu.addItem(quitItem)
         for item in menu.items {
             item.target = self
         }
         statusItem.menu = menu
         statusItem.button?.performClick(nil)
         statusItem.menu = nil
+    }
+
+    @objc private func openPlaylist() {
+        showPlaylistWindow()
     }
 
     @objc private func openSettings() {
