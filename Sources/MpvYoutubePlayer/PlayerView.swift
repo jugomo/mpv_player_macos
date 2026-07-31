@@ -3,6 +3,7 @@ import SwiftUI
 struct PlayerView: View {
     @ObservedObject var viewModel: PlayerViewModel
     @ObservedObject private var loc = LocalizationManager.shared
+    @ObservedObject private var playbackWindow = PlaybackWindowSettingsManager.shared
     @State private var isPlayFormExpanded = false
 
     private static let windowWidth: CGFloat = 420
@@ -24,7 +25,7 @@ struct PlayerView: View {
                             }
                         } label: {
                             HStack(spacing: 4) {
-                                Text(loc.t(.playLinkLabel))
+                                Image(systemName: "link")
                                     .font(.subheadline)
                                 Image(systemName: "chevron.down")
                                     .font(.caption)
@@ -33,6 +34,7 @@ struct PlayerView: View {
                         }
                         .buttonStyle(.plain)
                         .help(loc.t(.playLinkTooltip))
+                        .accessibilityLabel(loc.t(.playLinkLabel))
                     }
                 }
 
@@ -96,6 +98,15 @@ struct PlayerView: View {
                 }
                 .buttonStyle(.borderless)
                 .help(loc.t(.fullscreenTooltip))
+
+                Button {
+                    viewModel.toggleAlwaysOnTop()
+                } label: {
+                    Image(systemName: playbackWindow.alwaysOnTop ? "pin.fill" : "pin")
+                        .foregroundStyle(playbackWindow.alwaysOnTop ? Color.accentColor : Color.primary)
+                }
+                .buttonStyle(.borderless)
+                .help(loc.t(.alwaysOnTopTooltip))
             }
 
             Divider().frame(height: 14).padding(.horizontal, 2)

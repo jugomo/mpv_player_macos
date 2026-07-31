@@ -130,6 +130,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // corregirlo hace que el icono orbite alrededor de esa esquina en vez
         // de girar sobre sí mismo. Recentrar el anchorPoint y restaurar el
         // frame a continuación evita ese "salto" sin mover el icono en pantalla.
+        // El frame recién asignado tras cambiar la imagen puede no estar
+        // finalizado todavía (AppKit difiere el layout) — forzarlo aquí evita
+        // que se capture un frame stale, lo que en algunas máquinas (visto en
+        // Intel) hacía que el giro quedara excéntrico en vez de concéntrico.
+        button.layoutSubtreeIfNeeded()
         if let layer = button.layer {
             let frame = layer.frame
             layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
@@ -157,12 +162,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         isShowingPausedIcon = false
         showPlayingIcon()
         pauseBlinkTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            // Timer.scheduledTimer's closure isn't statically MainActor, but
-            // it always fires on the run loop it was scheduled from — the
-            // main one here, since this whole class is @MainActor.
-            MainActor.assumeIsolated {
-                self?.togglePauseBlinkIcon()
-            }
+            // Timer.scheduledTimer always fires on the run loop it was scheduled
+            // from — the main one here, since this whole class is @MainActor.
+            assert(Thread.isMainThread)
+            self?.togglePauseBlinkIcon()
         }
     }
 
@@ -361,7 +364,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let playlistItem = NSMenuItem(title: loc.t(.playlist), action: #selector(openPlaylist), keyEquivalent: "")
         playlistItem.image = NSImage(systemSymbolName: "music.note.list", accessibilityDescription: loc.t(.playlist))
         menu.addItem(playlistItem)
-        menu.addItem(NSMenuItem(title: loc.t(.settings), action: #selector(openSettings), keyEquivalent: ""))
+        let settingsItem = NSMenuItem(title: loc.t(.settings), action: #selector(openSettings), keyEquivalent: "")
+        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: loc.t(.settings))
+        menu.addItem(settingsItem)
         let helpItem = NSMenuItem(title: loc.t(.help), action: #selector(openHelp), keyEquivalent: "")
         helpItem.image = NSImage(systemSymbolName: "questionmark.circle", accessibilityDescription: loc.t(.help))
         menu.addItem(helpItem)

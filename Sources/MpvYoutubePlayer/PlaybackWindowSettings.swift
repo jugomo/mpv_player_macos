@@ -8,6 +8,7 @@ final class PlaybackWindowSettingsManager: ObservableObject {
 
     private static let hideWindowKey = "hideWindowForAudioOnly"
     private static let closeWindowsOnPlayKey = "closeWindowsOnPlay"
+    private static let alwaysOnTopKey = "alwaysOnTop"
 
     @Published var hideWindowForAudioOnly: Bool {
         didSet { UserDefaults.standard.set(hideWindowForAudioOnly, forKey: Self.hideWindowKey) }
@@ -19,6 +20,14 @@ final class PlaybackWindowSettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(closeWindowsOnPlay, forKey: Self.closeWindowsOnPlayKey) }
     }
 
+    /// Persiste entre reproducciones y reinicios de la app: mpv arranca
+    /// directamente con `--ontop` mientras esté activo (ver
+    /// `MPVLauncher.play`), y el botón de la ventana principal lo alterna
+    /// tanto para el mpv en marcha (vía IPC) como para las próximas.
+    @Published var alwaysOnTop: Bool {
+        didSet { UserDefaults.standard.set(alwaysOnTop, forKey: Self.alwaysOnTopKey) }
+    }
+
     private init() {
         hideWindowForAudioOnly = UserDefaults.standard.bool(forKey: Self.hideWindowKey)
         if UserDefaults.standard.object(forKey: Self.closeWindowsOnPlayKey) == nil {
@@ -26,5 +35,6 @@ final class PlaybackWindowSettingsManager: ObservableObject {
         } else {
             closeWindowsOnPlay = UserDefaults.standard.bool(forKey: Self.closeWindowsOnPlayKey)
         }
+        alwaysOnTop = UserDefaults.standard.bool(forKey: Self.alwaysOnTopKey)
     }
 }

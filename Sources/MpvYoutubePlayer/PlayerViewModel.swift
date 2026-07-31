@@ -429,6 +429,15 @@ final class PlayerViewModel: ObservableObject {
         MPVLauncher.toggleFullscreen()
     }
 
+    /// Alterna el ajuste persistido (se aplica a las próximas reproducciones
+    /// vía `--ontop`, ver `MPVLauncher.play`) y, si hay un mpv en marcha, lo
+    /// sincroniza al instante por IPC para que no haga falta reiniciar la
+    /// reproducción actual.
+    func toggleAlwaysOnTop() {
+        PlaybackWindowSettingsManager.shared.alwaysOnTop.toggle()
+        MPVLauncher.toggleAlwaysOnTop()
+    }
+
     /// Detiene la reproducción actual, si hay alguna. Termina el proceso mpv
     /// en marcha; el resto del estado (icono idle, Now Playing, etc.) se
     /// limpia solo a través de `handlePlaybackEnded`, disparado por el mismo

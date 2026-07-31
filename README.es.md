@@ -35,7 +35,7 @@ propias licencias originales.
 - **Solo barra de menú, consumo mínimo.** Sin icono en el Dock, sin ventanas hasta que las necesitas.
 - **Teclas multimedia y Centro de Control funcionan de fábrica.** Salta al elemento siguiente/anterior de la playlist sin cambiar de ventana.
 - **No se limita a YouTube.** Funciona con cualquier web soportada por `yt-dlp` (cientos de sitios).
-- **Controles de reproducción completos en el propio popover.** Anterior/reproducir-pausar/detener/siguiente, una barra de progreso con el tiempo transcurrido/restante, un botón de pantalla completa (cuando hay vídeo) y un slider de volumen independiente del volumen del sistema de macOS — sin tener que abrir la ventana de `mpv`.
+- **Controles de reproducción completos en el propio popover.** Anterior/reproducir-pausar/detener/siguiente, una barra de progreso con el tiempo transcurrido/restante, un botón de pantalla completa y otro de fijar siempre encima (ambos cuando hay vídeo), y un slider de volumen independiente del volumen del sistema de macOS — sin tener que abrir la ventana de `mpv`.
 - **Modo solo audio a tu manera.** Descarta la pista de vídeo para escuchar de fondo con poco consumo, y elige en Ajustes si `mpv` abre su propia ventana (minimizada automáticamente) o ninguna — la reproducción sigue siendo controlable al 100% desde la app en ambos casos.
 - **Vúmetro y carátula al reproducir solo audio.** Un medidor de nivel estéreo junto a los controles, con agujas analógicas de verdad o tiras LED digitales — haz clic para cambiar de estilo — que reacciona al nivel real del audio y al volumen propio de la app, junto con la miniatura propia del vídeo para que la pantalla no sean solo medidores y texto.
 - **El icono de la barra de menú refleja lo que pasa.** Gira mientras un vídeo se está inicializando y parpadea entre reproducir/pausa mientras está pausado, para saber el estado de un vistazo sin abrir el popover.
@@ -52,6 +52,8 @@ Para compilarla desde el código fuente, además necesitas:
 
 - [Swift toolchain](https://www.swift.org) (viene con Xcode / Command Line Tools)
 - [Homebrew](https://brew.sh) con [`mpv`](https://mpv.io) instalado (`brew install mpv`) — `build.sh` vendoriza esa copia local y sus librerías dentro del bundle, así la app *ya compilada* no necesita Homebrew para nada
+  - Si tu versión de macOS o arquitectura ya no tiene bottle precompilado en Homebrew (p. ej. Ventura en Intel), alternativas: instalar mpv con [MacPorts](https://www.macports.org) (`sudo port install mpv`, se detecta solo), forzar a Homebrew a compilar desde fuente (`brew install mpv --build-from-source`, requiere Xcode Command Line Tools), o pasarle a `build.sh` la ruta de cualquier binario de `mpv` con `MPV_BIN=/ruta/a/mpv ./build.sh`
+  - Si además colocas un zip `mpv-deps-macos-intel.zip` o `mpv-deps-macos-applesilicon.zip` (según tu arquitectura) en la raíz del proyecto, `build.sh` lo detecta y ofrece instalar `mpv`/`yt-dlp` desde ahí cuando no encuentra ninguna instalación local, sin depender de Homebrew ni MacPorts. Estos zips no se distribuyen en el repositorio (pesan ~90-180 MB); se generan a mano vendorizando una instalación local con `scripts/vendor_mpv.py`
 - Conexión a internet la primera vez que compiles, para descargar el binario standalone de `yt-dlp` (se cachea después en `.build/vendor/`)
 
 Si en tiempo de ejecución faltan `mpv`/`yt-dlp` (p. ej. ejecutando sin
@@ -85,7 +87,7 @@ añádela en **Ajustes del Sistema → General → Elementos de inicio**.
 ## Uso
 
 1. Haz clic en el icono de la barra de menú.
-2. Pulsa **Reproducir enlace**, junto al título (arranca colapsado), para
+2. Pulsa el icono de enlace junto al título (arranca colapsado) para
    desplegar el formulario y pega ahí la URL del vídeo de YouTube (si ya
    la tienes copiada, se autocompleta).
 3. Elige la calidad deseada.
@@ -97,8 +99,11 @@ reproducción, usa los botones de anterior/reproducir-pausar/detener/
 siguiente del popover (o las teclas multimedia / Centro de Control) para
 controlarlo, arrastra la barra de progreso para saltar a una posición, y
 usa el slider de volumen para ajustar solo la reproducción de esta app —
-nunca toca el volumen del sistema de macOS. Si hay vídeo, aparece un botón
-de pantalla completa junto al de playlist; en modo solo audio aparecen en
+nunca toca el volumen del sistema de macOS. Si hay vídeo, aparecen un
+botón de pantalla completa y otro de fijar siempre encima (un pin) junto
+al de playlist — el estado del pin se recuerda entre vídeos y entre
+reinicios de la app, así que la ventana de `mpv` arranca ya fijada encima
+del resto si la dejaste activada; en modo solo audio aparecen en
 su lugar un vúmetro y la carátula del vídeo junto al título (haz clic en
 el vúmetro para alternar entre el estilo digital y el analógico). El
 botón de reproducir se convierte en pausa automáticamente, y el icono de

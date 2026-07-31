@@ -35,7 +35,7 @@ licenses.
 - **Menu-bar only, near-zero footprint.** No Dock icon, no window until you need one.
 - **Keyboard media keys and Control Center work out of the box.** Skip to the next/previous playlist item without switching windows.
 - **Not limited to YouTube.** Anything `yt-dlp` supports (hundreds of sites) works the same way.
-- **Full playback controls right in the popover.** Previous/play-pause/stop/next, a seek bar with elapsed/remaining time, a fullscreen toggle (when there's video), and a volume slider that's independent from macOS's system volume — no need to open `mpv`'s own window.
+- **Full playback controls right in the popover.** Previous/play-pause/stop/next, a seek bar with elapsed/remaining time, a fullscreen toggle and an always-on-top toggle (both when there's video), and a volume slider that's independent from macOS's system volume — no need to open `mpv`'s own window.
 - **Audio-only mode, your way.** Strip the video stream for lightweight background listening, and choose in Settings whether `mpv` opens its own (auto-minimized) window or none at all — playback stays fully controllable from the app either way.
 - **VU meters and cover art while playing audio-only.** A stereo level meter next to the controls, real analog needles or digital LED bars — click it to switch style — reacting to the actual audio level and to the app's own volume slider, plus the video's own thumbnail shown alongside it so the screen isn't just meters and text.
 - **Menu bar icon reflects what's happening.** It spins while a video is initializing and blinks between play/pause while paused, so you can tell at a glance without opening the popover.
@@ -51,6 +51,8 @@ To build it from source, you additionally need:
 
 - [Swift toolchain](https://www.swift.org) (bundled with Xcode / Command Line Tools)
 - [Homebrew](https://brew.sh) with [`mpv`](https://mpv.io) installed (`brew install mpv`) — `build.sh` vendors this local copy and its libraries into the app bundle so the *built* app doesn't need Homebrew at all
+  - If your macOS version or architecture no longer has a precompiled bottle in Homebrew (e.g. Ventura on Intel), alternatives: install mpv with [MacPorts](https://www.macports.org) (`sudo port install mpv`, auto-detected), force Homebrew to build from source (`brew install mpv --build-from-source`, requires Xcode Command Line Tools), or point `build.sh` at any `mpv` binary with `MPV_BIN=/path/to/mpv ./build.sh`
+  - If you drop a `mpv-deps-macos-intel.zip` or `mpv-deps-macos-applesilicon.zip` (matching your architecture) at the project root, `build.sh` detects it and offers to install `mpv`/`yt-dlp` from it whenever no local install is found, without needing Homebrew or MacPorts at all. These zips aren't shipped in the repo (they're ~90-180 MB); generate one by hand by vendoring a local install with `scripts/vendor_mpv.py`
 - Internet access the first time you build, to download the standalone `yt-dlp` binary (cached afterwards in `.build/vendor/`)
 
 If `mpv`/`yt-dlp` happen to be missing at runtime (e.g. running unpackaged during development), the app falls back to detecting a Homebrew install and offers to install them for you.
@@ -82,7 +84,7 @@ menu-bar-only app). To have it launch automatically at login, add it in
 ## Usage
 
 1. Click the menu bar icon.
-2. Click **Play link**, next to the title (it starts collapsed), to
+2. Click the link icon next to the title (it starts collapsed) to
    reveal the URL form, then paste the YouTube video URL (if you already
    have it copied, it autofills).
 3. Choose the desired quality.
@@ -94,7 +96,10 @@ previous/play-pause/stop/next buttons in the popover (or the keyboard
 media keys / Control Center) to control it, drag the seek bar to jump to a
 position, and use the volume slider to adjust this app's playback only —
 it never touches macOS's system volume. If there's video, a fullscreen
-button shows up next to the playlist button; in audio-only mode a VU
+button and an always-on-top (pin) button show up next to the playlist
+button — the pin toggle is remembered across videos and app restarts, so
+`mpv`'s window starts already pinned above other windows if you left it
+on; in audio-only mode a VU
 meter and the video's cover art show up instead, next to the title (click
 the meter to switch between the digital and analog styles). The play
 button turns into a pause button automatically, and the menu bar icon

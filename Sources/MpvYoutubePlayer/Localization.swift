@@ -35,7 +35,7 @@ enum LKey {
     case renderSectionTitle, renderQualityHint
     case audioOnlyWindowToggleLabel, audioOnlyWindowHint
     case closeWindowsOnPlayToggleLabel, closeWindowsOnPlayHint
-    case fullscreenTooltip, volumeTooltip, vuMeterToggleTooltip
+    case fullscreenTooltip, volumeTooltip, vuMeterToggleTooltip, alwaysOnTopTooltip
     case playLinkLabel, playLinkTooltip
 }
 
@@ -159,6 +159,7 @@ final class LocalizationManager: ObservableObject {
         ),
 
         .fullscreenTooltip: ("Pantalla completa", "Fullscreen"),
+        .alwaysOnTopTooltip: ("Mantener siempre encima", "Keep always on top"),
         .volumeTooltip: ("Volumen (solo esta reproducción)", "Volume (this playback only)"),
         .vuMeterToggleTooltip: ("Clic para cambiar de estilo (digital/analógico)", "Click to switch style (digital/analog)"),
 

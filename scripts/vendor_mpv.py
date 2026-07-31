@@ -13,7 +13,7 @@ import shutil
 import subprocess
 import sys
 
-VENDORED_PREFIXES = ("/opt/homebrew/", "/usr/local/")
+VENDORED_PREFIXES = ("/opt/homebrew/", "/usr/local/", "/opt/local/")
 
 
 def otool_deps(path):

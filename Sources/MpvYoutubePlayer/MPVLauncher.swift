@@ -222,7 +222,8 @@ enum MPVLauncher {
             // no toca el volumen del sistema: cada reproducción arranca con el
             // último valor elegido en el slider de la app.
             "--volume=\(Int(volume.rounded()))",
-        ] + RenderSettingsManager.shared.quality.mpvArguments
+        ] + (PlaybackWindowSettingsManager.shared.alwaysOnTop ? ["--ontop"] : [])
+          + RenderSettingsManager.shared.quality.mpvArguments
           + CacheSettingsManager.shared.mpvArguments
           + quality.mpvArguments(
               for: trimmed,
@@ -387,6 +388,15 @@ enum MPVLauncher {
         let client = currentIPCClient
         processesLock.unlock()
         client?.send(command: ["cycle", "fullscreen"])
+    }
+
+    /// Alterna que la ventana de mpv se mantenga siempre encima del resto a
+    /// través del IPC server. No hace nada si no hay ningún mpv en marcha.
+    static func toggleAlwaysOnTop() {
+        processesLock.lock()
+        let client = currentIPCClient
+        processesLock.unlock()
+        client?.send(command: ["cycle", "ontop"])
     }
 
     /// Ajusta el volumen del mpv actual (0-100) a través del IPC server. Es

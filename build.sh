@@ -49,32 +49,75 @@ if [ -f "$ICNS_PATH" ]; then
     cp "$ICNS_PATH" "${BUNDLE}/Contents/Resources/AppIcon.icns"
 fi
 
+case "$(uname -m)" in
+    arm64)   DEPS_ZIP="mpv-deps-macos-applesilicon.zip" ;;
+    x86_64)  DEPS_ZIP="mpv-deps-macos-intel.zip" ;;
+    *)       DEPS_ZIP="" ;;
+esac
+
 echo "==> Vendorizando mpv y sus dependencias (para no requerir Homebrew en la máquina final)…"
-MPV_SOURCE=""
-for dir in /opt/homebrew/bin /usr/local/bin; do
-    if [ -x "${dir}/mpv" ]; then
-        MPV_SOURCE="${dir}/mpv"
-        break
-    fi
-done
-if [ -z "$MPV_SOURCE" ]; then
-    echo "Error: no se encontró mpv instalado (vía Homebrew) en esta máquina; hace falta para vendorizarlo en el bundle. Instálalo con 'brew install mpv'." >&2
+MPV_SOURCE="${MPV_BIN:-}"
+if [ -n "$MPV_SOURCE" ] && [ ! -x "$MPV_SOURCE" ]; then
+    echo "Error: MPV_BIN='${MPV_SOURCE}' no existe o no es ejecutable." >&2
     exit 1
 fi
-python3 scripts/vendor_mpv.py "$MPV_SOURCE" "${BUNDLE}/Contents/Resources"
-
-echo "==> Vendorizando yt-dlp (binario standalone, sin dependencias de Python/Homebrew)…"
-YTDLP_CACHE=".build/vendor/yt-dlp_macos"
-if [ ! -x "$YTDLP_CACHE" ]; then
-    mkdir -p "$(dirname "$YTDLP_CACHE")"
-    curl -fL --progress-bar -o "$YTDLP_CACHE" \
-        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
-    chmod +x "$YTDLP_CACHE"
-    xattr -d com.apple.quarantine "$YTDLP_CACHE" 2>/dev/null || true
-else
-    echo "    (usando copia en caché: ${YTDLP_CACHE}; bórrala para forzar una actualización)"
+if [ -z "$MPV_SOURCE" ]; then
+    for dir in /opt/homebrew/bin /usr/local/bin /opt/local/bin; do
+        if [ -x "${dir}/mpv" ]; then
+            MPV_SOURCE="${dir}/mpv"
+            break
+        fi
+    done
 fi
-cp "$YTDLP_CACHE" "${BUNDLE}/Contents/Resources/bin/yt-dlp"
+
+FROM_ZIP=0
+if [ -z "$MPV_SOURCE" ] && [ -n "$DEPS_ZIP" ] && [ -f "$DEPS_ZIP" ]; then
+    echo "No se encontró mpv instalado, pero hay dependencias vendorizadas para tu arquitectura ($(uname -m)) en '${DEPS_ZIP}'."
+    ans="s"
+    if [ -t 0 ]; then
+        read -r -p "¿Instalar mpv/yt-dlp desde ese zip en vez de requerir Homebrew/MacPorts? [S/n] " ans
+    else
+        echo "    (entorno no interactivo: se usa el zip automáticamente)"
+    fi
+    case "$ans" in
+        [nN]*) ;;
+        *) FROM_ZIP=1 ;;
+    esac
+fi
+
+if [ "$FROM_ZIP" -eq 1 ]; then
+    echo "==> Instalando mpv y yt-dlp desde ${DEPS_ZIP}…"
+    unzip -q -o "$DEPS_ZIP" -d "${BUNDLE}/Contents/Resources"
+    chmod +x "${BUNDLE}/Contents/Resources/bin/"*
+    find "${BUNDLE}/Contents/Resources/bin" "${BUNDLE}/Contents/Resources/lib" -type f \
+        -exec codesign --force --sign - {} \;
+elif [ -n "$MPV_SOURCE" ]; then
+    python3 scripts/vendor_mpv.py "$MPV_SOURCE" "${BUNDLE}/Contents/Resources"
+else
+    echo "Error: no se encontró mpv instalado en esta máquina; hace falta para vendorizarlo en el bundle. Alternativas:" >&2
+    echo "  - Homebrew: 'brew install mpv' (si tu macOS/arquitectura no tiene bottle precompilado, prueba 'brew install mpv --build-from-source', requiere Xcode Command Line Tools)" >&2
+    echo "  - MacPorts: 'sudo port install mpv' (se detecta automáticamente en /opt/local/bin)" >&2
+    echo "  - Un binario de mpv obtenido por otra vía: 'MPV_BIN=/ruta/a/mpv ./build.sh'" >&2
+    if [ -n "$DEPS_ZIP" ]; then
+        echo "  - Un zip de dependencias vendorizadas '${DEPS_ZIP}' en la raíz del proyecto (no encontrado en esta máquina)" >&2
+    fi
+    exit 1
+fi
+
+if [ ! -x "${BUNDLE}/Contents/Resources/bin/yt-dlp" ]; then
+    echo "==> Vendorizando yt-dlp (binario standalone, sin dependencias de Python/Homebrew)…"
+    YTDLP_CACHE=".build/vendor/yt-dlp_macos"
+    if [ ! -x "$YTDLP_CACHE" ]; then
+        mkdir -p "$(dirname "$YTDLP_CACHE")"
+        curl -fL --progress-bar -o "$YTDLP_CACHE" \
+            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+        chmod +x "$YTDLP_CACHE"
+        xattr -d com.apple.quarantine "$YTDLP_CACHE" 2>/dev/null || true
+    else
+        echo "    (usando copia en caché: ${YTDLP_CACHE}; bórrala para forzar una actualización)"
+    fi
+    cp "$YTDLP_CACHE" "${BUNDLE}/Contents/Resources/bin/yt-dlp"
+fi
 
 echo "==> Firmando ad-hoc…"
 codesign --force --sign - "${BUNDLE}/Contents/Resources/bin/yt-dlp"
