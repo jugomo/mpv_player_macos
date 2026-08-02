@@ -8,15 +8,10 @@ struct PlaylistView: View {
     @ObservedObject var store: PlaylistStore
     @ObservedObject var viewModel: PlayerViewModel
     @ObservedObject private var loc = LocalizationManager.shared
+    var isDocked: Bool = false
     var onItemPlayed: (() -> Void)?
+    var onToggleDocked: (() -> Void)?
     @State private var errorMessage: String?
-
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter
-    }()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -24,6 +19,13 @@ struct PlaylistView: View {
                 Text(loc.t(.playlistTitle))
                     .font(.headline)
                 Spacer()
+                if let onToggleDocked {
+                    Button(action: onToggleDocked) {
+                        Image(systemName: isDocked ? "pip.enter" : "pip.exit")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(isDocked ? loc.t(.undockPlaylistTooltip) : loc.t(.dockPlaylistTooltip))
+                }
                 Button(loc.t(.importEllipsis), action: importPlaylist)
                 Button(loc.t(.exportEllipsis), action: exportPlaylist)
                     .disabled(store.items.isEmpty)
@@ -51,17 +53,18 @@ struct PlaylistView: View {
                 List {
                     ForEach(store.items) { item in
                         let isPlaying = item.id == viewModel.currentlyPlayingItemID
-                        HStack(alignment: .firstTextBaseline) {
+                        HStack(alignment: .top, spacing: 10) {
                             Button {
                                 viewModel.play(item: item)
                                 onItemPlayed?()
                             } label: {
                                 Image(systemName: "play.circle.fill")
+                                    .font(.title2)
                             }
                             .buttonStyle(.borderless)
                             .help(loc.t(.playTooltip))
 
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 HStack(spacing: 4) {
                                     if isPlaying {
                                         Image(systemName: "speaker.wave.2.fill")
@@ -69,49 +72,47 @@ struct PlaylistView: View {
                                             .font(.caption)
                                     }
                                     Text(item.title ?? item.urlString)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
                                         .fontWeight(isPlaying ? .semibold : .regular)
                                 }
-                                Text(Self.dateFormatter.string(from: item.addedAt))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .contentShape(Rectangle())
-                            .onTapGesture(count: 2) {
-                                viewModel.play(item: item)
-                                onItemPlayed?()
-                            }
-                            .help(loc.t(.doubleClickToPlay))
+                                .contentShape(Rectangle())
+                                .onTapGesture(count: 2) {
+                                    viewModel.play(item: item)
+                                    onItemPlayed?()
+                                }
+                                .help(loc.t(.doubleClickToPlay))
 
-                            Spacer()
+                                HStack(spacing: 8) {
+                                    Picker("", selection: qualityBinding(for: item)) {
+                                        ForEach(VideoQuality.allCases) { quality in
+                                            Text(quality.displayName(in: loc.language)).tag(quality)
+                                        }
+                                    }
+                                    .labelsHidden()
+                                    .frame(width: 120)
+                                    .help(loc.t(.qualityTooltip))
 
-                            Picker("", selection: qualityBinding(for: item)) {
-                                ForEach(VideoQuality.allCases) { quality in
-                                    Text(quality.displayName(in: loc.language)).tag(quality)
+                                    Spacer()
+
+                                    Button {
+                                        copyToClipboard(item.urlString)
+                                    } label: {
+                                        Image(systemName: "doc.on.doc")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help(loc.t(.copyUrlTooltip))
+
+                                    Button {
+                                        store.remove(item)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help(loc.t(.removeFromPlaylistTooltip))
                                 }
                             }
-                            .labelsHidden()
-                            .frame(width: 120)
-                            .help(loc.t(.qualityTooltip))
-
-                            Button {
-                                copyToClipboard(item.urlString)
-                            } label: {
-                                Image(systemName: "doc.on.doc")
-                            }
-                            .buttonStyle(.borderless)
-                            .help(loc.t(.copyUrlTooltip))
-
-                            Button {
-                                store.remove(item)
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                            .help(loc.t(.removeFromPlaylistTooltip))
                         }
-                        .padding(.vertical, 2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
                         .padding(.horizontal, 4)
                         .background(isPlaying ? Color.accentColor.opacity(0.15) : Color.clear)
                         .cornerRadius(4)
@@ -121,7 +122,7 @@ struct PlaylistView: View {
             }
         }
         .padding(16)
-        .frame(minWidth: 420, idealWidth: 460, minHeight: 320, idealHeight: 480)
+        .frame(minWidth: isDocked ? 260 : 420, idealWidth: isDocked ? 320 : 460, minHeight: 320, idealHeight: 480)
     }
 
     private func qualityBinding(for item: PlaylistItem) -> Binding<VideoQuality> {

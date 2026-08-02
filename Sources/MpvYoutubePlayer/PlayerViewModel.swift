@@ -65,8 +65,13 @@ final class PlayerViewModel: ObservableObject {
     /// showing anything), so the menu bar icon can fall back to its idle look.
     var onPlaybackStopped: (() -> Void)?
 
-    /// Set by the AppDelegate; called when the user wants to open the playlist screen.
+    /// Set by the AppDelegate; called when the user wants to show/hide the playlist screen.
     var onOpenPlaylistRequested: (() -> Void)?
+
+    /// Mirrors whether the AppDelegate's playlist window is currently
+    /// visible (docked or floating), so the main window's Playlist button
+    /// can reflect that state in its own icon.
+    @Published var isPlaylistVisible: Bool = false
 
     /// Set by the AppDelegate; called once playback actually starts, with the
     /// resolved title, so it can show a system-level "now playing" toast

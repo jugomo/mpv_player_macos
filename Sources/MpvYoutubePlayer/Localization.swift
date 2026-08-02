@@ -38,6 +38,8 @@ enum LKey {
     case fullscreenTooltip, volumeTooltip, vuMeterToggleTooltip, alwaysOnTopTooltip
     case playLinkLabel, playLinkTooltip
     case showDescriptionTooltip
+    case dockPlaylistTooltip, undockPlaylistTooltip
+    case showPlaylistTooltip, hidePlaylistTooltip
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -168,5 +170,10 @@ final class LocalizationManager: ObservableObject {
         .playLinkTooltip: ("Clic para mostrar/ocultar los controles de reproducción", "Click to show/hide the playback controls"),
 
         .showDescriptionTooltip: ("Clic para mostrar/ocultar la descripción", "Click to show/hide the description"),
+
+        .dockPlaylistTooltip: ("Acoplar junto a la ventana principal", "Dock next to the main window"),
+        .undockPlaylistTooltip: ("Desacoplar a ventana flotante", "Undock to a floating window"),
+        .showPlaylistTooltip: ("Mostrar playlist", "Show playlist"),
+        .hidePlaylistTooltip: ("Ocultar playlist", "Hide playlist"),
     ]
 }

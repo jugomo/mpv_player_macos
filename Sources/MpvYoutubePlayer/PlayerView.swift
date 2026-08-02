@@ -147,10 +147,11 @@ struct PlayerView: View {
             Button {
                 viewModel.onOpenPlaylistRequested?()
             } label: {
-                Image(systemName: "list.bullet")
+                Image(systemName: viewModel.isPlaylistVisible ? "list.bullet.circle.fill" : "list.bullet")
+                    .foregroundStyle(viewModel.isPlaylistVisible ? Color.accentColor : Color.primary)
             }
             .buttonStyle(.borderless)
-            .help(loc.t(.playlist))
+            .help(viewModel.isPlaylistVisible ? loc.t(.hidePlaylistTooltip) : loc.t(.showPlaylistTooltip))
 
             if viewModel.currentlyPlayingHasVideo {
                 Button {
