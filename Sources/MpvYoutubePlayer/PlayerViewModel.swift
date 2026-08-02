@@ -15,6 +15,10 @@ final class PlayerViewModel: ObservableObject {
     /// commands from the keyboard media keys and the Control Center widget.
     @Published private(set) var currentlyPlayingItemID: UUID?
 
+    /// `true` mientras se está pidiendo la descripción del vídeo actual a
+    /// yt-dlp (ver `fetchDescriptionForCurrentlyPlayingIfNeeded`).
+    @Published private(set) var isFetchingDescription: Bool = false
+
     /// Mirrors mpv's `pause` property (via IPC), used to reflect the real
     /// playback state in the Now Playing info.
     @Published private(set) var isPaused: Bool = false
@@ -266,6 +270,16 @@ final class PlayerViewModel: ObservableObject {
         MPVLauncher.seek(to: seconds)
     }
 
+    /// Salta directamente a una posición absoluta (p. ej. al pulsar una marca
+    /// de tiempo tipo "04:32" enlazada en la descripción). No hace nada si no
+    /// hay nada cargado en mpv.
+    func seekToTimestamp(seconds: Double) {
+        guard currentlyPlayingItemID != nil else { return }
+        isScrubbing = false
+        currentTimeSeconds = max(0, seconds)
+        MPVLauncher.seek(to: seconds)
+    }
+
     /// Salta hacia adelante/atrás desde la posición actual (p. ej. con las
     /// flechas del teclado). No hace nada si no hay nada cargado en mpv.
     func seekRelative(by deltaSeconds: Double) {
@@ -411,6 +425,35 @@ final class PlayerViewModel: ObservableObject {
         guard let id = currentlyPlayingItemID else { return nil }
         guard let item = playlistStore.items.first(where: { $0.id == id }) else { return nil }
         return item.title ?? item.urlString
+    }
+
+    /// Descripción ya cacheada del ítem actual, si se pidió antes (ver
+    /// `fetchDescriptionForCurrentlyPlayingIfNeeded`). `nil` mientras no se
+    /// ha pedido o si yt-dlp no la reportó.
+    var currentlyPlayingDescription: String? {
+        guard let id = currentlyPlayingItemID else { return nil }
+        return playlistStore.items.first(where: { $0.id == id })?.description
+    }
+
+    /// Pide a yt-dlp la descripción del ítem actual, si no se ha pedido ya.
+    /// Se dispara al pulsar el título en la UI en vez de en cada
+    /// reproducción, para no lanzar un proceso yt-dlp adicional de más.
+    func fetchDescriptionForCurrentlyPlayingIfNeeded() {
+        guard let id = currentlyPlayingItemID,
+              let item = playlistStore.items.first(where: { $0.id == id }) else { return }
+        guard item.description == nil, !isFetchingDescription else { return }
+        guard let ytdlpPath = status.ytdlpPath else { return }
+
+        isFetchingDescription = true
+        YtDlpMetadataFetcher.fetchDescription(urlString: item.urlString, ytdlpPath: ytdlpPath) { [weak self] description in
+            guard let self else { return }
+            // El flag es global (no por ítem): siempre se resetea, aunque el
+            // usuario ya haya cambiado de vídeo mientras yt-dlp corría, para
+            // no dejar futuras peticiones bloqueadas indefinidamente.
+            self.isFetchingDescription = false
+            guard id == self.currentlyPlayingItemID, let description else { return }
+            self.playlistStore.updateDescription(for: id, description: description)
+        }
     }
 
     var canPlayNext: Bool {

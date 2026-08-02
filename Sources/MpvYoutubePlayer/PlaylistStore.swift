@@ -89,6 +89,15 @@ final class PlaylistStore: ObservableObject {
         save()
     }
 
+    /// Descripción obtenida bajo demanda vía yt-dlp (ver `YtDlpMetadataFetcher`),
+    /// cacheada para no tener que volver a pedirla en reproducciones futuras
+    /// del mismo ítem.
+    func updateDescription(for id: UUID, description: String) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        items[index].description = description
+        save()
+    }
+
     func remove(_ item: PlaylistItem) {
         items.removeAll { $0.id == item.id }
         save()

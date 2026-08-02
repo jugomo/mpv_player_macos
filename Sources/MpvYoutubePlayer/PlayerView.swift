@@ -1,13 +1,32 @@
 import SwiftUI
 
+/// Usada para que el contenedor cuadrado de la miniatura conozca el alto real
+/// de la columna vecina (controles + seek bar + vúmetro) y se ajuste a ella,
+/// en vez de tener un alto fijo propio.
+private struct PlaybackInfoHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct PlayerView: View {
     @ObservedObject var viewModel: PlayerViewModel
     @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var playbackWindow = PlaybackWindowSettingsManager.shared
     @State private var isPlayFormExpanded = false
+    @State private var isDescriptionExpanded = false
+    /// Lado del contenedor cuadrado de la miniatura, sincronizado al alto real
+    /// de `playbackInfoColumn` vía `PlaybackInfoHeightKey`. Arranca con un
+    /// valor de respaldo para no colapsar a tamaño 0 antes de la primera
+    /// medición.
+    @State private var thumbnailSide: CGFloat = 105
 
     private static let windowWidth: CGFloat = 420
     private static let contentPadding: CGFloat = 20
+    /// Alto máximo visible de la descripción (~20 líneas de `.caption2`);
+    /// por encima de eso se vuelve scrollable en vez de seguir creciendo.
+    private static let descriptionMaxHeight: CGFloat = 14 * 20
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -46,25 +65,41 @@ struct PlayerView: View {
 
             Divider()
 
-            if viewModel.showVUMeters, let thumbnailURL = viewModel.currentlyPlayingThumbnailURL {
+            titleView
+
+            if let thumbnailURL = viewModel.currentlyPlayingThumbnailURL {
                 HStack(alignment: .top, spacing: 20) {
-                    AsyncImage(url: thumbnailURL) { phase in
-                        if case .success(let image) = phase {
-                            image.resizable().aspectRatio(contentMode: .fill)
-                        } else {
-                            Color.secondary.opacity(0.1)
+                    ZStack {
+                        Color.black
+                        AsyncImage(url: thumbnailURL) { phase in
+                            if case .success(let image) = phase {
+                                image.resizable().aspectRatio(contentMode: .fit)
+                            } else {
+                                Color.clear
+                            }
                         }
                     }
-                    .frame(width: Self.windowWidth * 0.25)
-                    .frame(maxHeight: .infinity)
-                    .clipped()
+                    .frame(width: thumbnailSide, height: thumbnailSide)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
 
                     playbackInfoColumn
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(
+                            GeometryReader { proxy in
+                                Color.clear.preference(key: PlaybackInfoHeightKey.self, value: proxy.size.height)
+                            }
+                        )
+                }
+                .onPreferenceChange(PlaybackInfoHeightKey.self) { height in
+                    guard height > 0 else { return }
+                    thumbnailSide = height
                 }
             } else {
                 playbackInfoColumn
+            }
+
+            if isDescriptionExpanded {
+                descriptionView
             }
 
             if !viewModel.status.isReady {
@@ -77,6 +112,9 @@ struct PlayerView: View {
         .onAppear {
             viewModel.refreshDependencyStatus()
             viewModel.prefillURLFromClipboardIfEmpty()
+        }
+        .onChange(of: viewModel.currentlyPlayingItemID) { _ in
+            isDescriptionExpanded = false
         }
     }
 
@@ -176,11 +214,8 @@ struct PlayerView: View {
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 Slider(value: $viewModel.volume, in: 0...100)
-                    .frame(width: 70)
             }
             .help(loc.t(.volumeTooltip))
-
-            Spacer()
         }
     }
 
@@ -189,6 +224,10 @@ struct PlayerView: View {
         VStack(alignment: .leading, spacing: 18) {
             controlsRow
 
+            if viewModel.currentlyPlayingItemID != nil {
+                seekBar
+            }
+
             if viewModel.showVUMeters {
                 VUMeterView(
                     leftLevel: viewModel.leftLevel,
@@ -196,20 +235,86 @@ struct PlayerView: View {
                     isSettling: viewModel.isPaused || viewModel.currentlyPlayingItemID == nil
                 )
             }
+        }
+    }
 
-            if let title = viewModel.currentlyPlayingTitle {
+    @ViewBuilder
+    private var titleView: some View {
+        if let title = viewModel.currentlyPlayingTitle {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isDescriptionExpanded.toggle()
+                }
+                if isDescriptionExpanded {
+                    viewModel.fetchDescriptionForCurrentlyPlayingIfNeeded()
+                }
+            } label: {
                 Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
                     .lineLimit(1...6)
                     .truncationMode(.tail)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            if viewModel.currentlyPlayingItemID != nil {
-                seekBar
-            }
+            .buttonStyle(.plain)
+            .help(loc.t(.showDescriptionTooltip))
         }
+    }
+
+    @ViewBuilder
+    private var descriptionView: some View {
+        if let description = viewModel.currentlyPlayingDescription {
+            ScrollView {
+                Text(Self.linkifyTimestamps(in: description))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: Self.descriptionMaxHeight)
+            .environment(\.openURL, OpenURLAction { url in
+                guard url.scheme == Self.timestampURLScheme, let seconds = Double(url.host ?? "") else {
+                    return .systemAction
+                }
+                viewModel.seekToTimestamp(seconds: seconds)
+                return .handled
+            })
+        } else if viewModel.isFetchingDescription {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// Esquema propio (no navegable, solo interceptado por `descriptionView`)
+    /// usado para codificar marcas de tiempo como enlaces dentro del `Text`.
+    private static let timestampURLScheme = "mpvseek"
+
+    /// Detecta marcas de tiempo tipo "4:32" o "1:23:45" en la descripción
+    /// (igual que hace YouTube) y las convierte en enlaces que, al pulsarlos,
+    /// saltan a esa posición del vídeo.
+    private static func linkifyTimestamps(in text: String) -> AttributedString {
+        var attributed = AttributedString(text)
+        guard let regex = try? NSRegularExpression(pattern: #"\b(?:([0-9]{1,2}):)?([0-5]?[0-9]):([0-5][0-9])\b"#) else {
+            return attributed
+        }
+        let nsText = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+        for match in matches {
+            guard let stringRange = Range(match.range, in: text),
+                  let attributedRange = Range(stringRange, in: attributed) else { continue }
+
+            let hours = match.range(at: 1).location != NSNotFound ? Int(nsText.substring(with: match.range(at: 1))) ?? 0 : 0
+            let minutes = Int(nsText.substring(with: match.range(at: 2))) ?? 0
+            let seconds = Int(nsText.substring(with: match.range(at: 3))) ?? 0
+            let totalSeconds = hours * 3600 + minutes * 60 + seconds
+            guard let url = URL(string: "\(timestampURLScheme)://\(totalSeconds)") else { continue }
+
+            attributed[attributedRange].link = url
+            attributed[attributedRange].foregroundColor = .accentColor
+            attributed[attributedRange].underlineStyle = .single
+        }
+        return attributed
     }
 
     @ViewBuilder

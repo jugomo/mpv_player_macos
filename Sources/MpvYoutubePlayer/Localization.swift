@@ -37,6 +37,7 @@ enum LKey {
     case closeWindowsOnPlayToggleLabel, closeWindowsOnPlayHint
     case fullscreenTooltip, volumeTooltip, vuMeterToggleTooltip, alwaysOnTopTooltip
     case playLinkLabel, playLinkTooltip
+    case showDescriptionTooltip
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -165,5 +166,7 @@ final class LocalizationManager: ObservableObject {
 
         .playLinkLabel: ("Reproducir enlace", "Play link"),
         .playLinkTooltip: ("Clic para mostrar/ocultar los controles de reproducción", "Click to show/hide the playback controls"),
+
+        .showDescriptionTooltip: ("Clic para mostrar/ocultar la descripción", "Click to show/hide the description"),
     ]
 }
