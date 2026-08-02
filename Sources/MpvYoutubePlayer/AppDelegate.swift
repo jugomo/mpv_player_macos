@@ -33,6 +33,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isPlaylistDocked = false
     private var dockedMainWindowObservers: [NSObjectProtocol] = []
     private var playlistWindowCloseObserver: NSObjectProtocol?
+    private var focusLossObservers: [NSObjectProtocol] = []
     private weak var dockedMainWindow: NSWindow?
     private var aboutWindow: NSWindow?
     private var settingsWindow: NSWindow?
@@ -88,6 +89,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.isPaused = isPaused
             self?.refreshStatusIcon()
         }
+
+        startObservingFocusLossForAutoClose()
+    }
+
+    /// Con `closeWindowsOnPlay` activado, la ventana principal y la playlist
+    /// deben comportarse como una sola "sesión": mientras cualquiera de las
+    /// dos tenga el foco, ambas siguen abiertas; en cuanto ninguna lo tenga
+    /// (clic en otra app, en el escritorio, en la ventana de mpv, etc.) se
+    /// cierran las dos juntas. Se comprueba en cualquier cambio de key
+    /// window o de app activa, no solo en las nuestras, porque lo que
+    /// importa es el estado resultante (quién es key ahora), no quién lo
+    /// perdió.
+    private func startObservingFocusLossForAutoClose() {
+        let handler: (Notification) -> Void = { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.closeCompanionWindowsIfFocusLost()
+            }
+        }
+        focusLossObservers = [
+            NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main, using: handler),
+            NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main, using: handler),
+        ]
+    }
+
+    private func closeCompanionWindowsIfFocusLost() {
+        guard PlaybackWindowSettingsManager.shared.closeWindowsOnPlay else { return }
+        guard popover.isShown || playlistWindow?.isVisible == true else { return }
+        let keyWindow = NSApp.keyWindow
+        let stillFocused = keyWindow != nil && (keyWindow === mainPopoverWindow() || keyWindow === playlistWindow)
+        guard !stillFocused else { return }
+        if popover.isShown { closePopover() }
+        if playlistWindow?.isVisible == true { hidePlaylistWindow() }
     }
 
     /// Punto único de decisión del icono de la barra de menú: `isLoading`
@@ -216,11 +249,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Botón "Playlist" de la ventana principal: si la playlist ya está
     /// visible (acoplada o flotante) la oculta; si no, la muestra acoplada.
+    /// La preferencia se persiste (a diferencia del cierre automático de
+    /// `hidePlaylistWindow` al perder el foco o cerrarse la ventana
+    /// principal, que no la toca) para que la próxima vez que se abra la
+    /// ventana principal —incluso en un lanzamiento distinto de la app— la
+    /// playlist vuelva a aparecer si se dejó así a propósito.
     private func togglePlaylistVisibility() {
         if playlistWindow?.isVisible == true {
             hidePlaylistWindow()
+            PlaybackWindowSettingsManager.shared.playlistVisible = false
         } else {
             showPlaylistWindow(docked: true)
+            PlaybackWindowSettingsManager.shared.playlistVisible = true
         }
     }
 
@@ -619,20 +659,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
             repositionPopoverBelowStatusItem(sender)
+            if PlaybackWindowSettingsManager.shared.playlistVisible {
+                showPlaylistWindow(docked: true)
+            }
         }
     }
 
-    /// Con `closeWindowsOnPlay` desactivado, el usuario quiere que la ventana
-    /// principal quede siempre visible aunque pierda el foco (p. ej. al
-    /// interactuar con la ventana de mpv), cerrándola solo a mano desde el
-    /// ícono de la barra de menú. `.transient` (el comportamiento normal de
-    /// un `NSPopover`) la cierra automáticamente ante cualquier clic o
-    /// activación fuera de ella, así que hay que pasar a `.applicationDefined`
-    /// para desactivar ese auto-cierre; con la opción activada se mantiene
-    /// `.transient`, el comportamiento de siempre.
-    private static var popoverBehavior: NSPopover.Behavior {
-        PlaybackWindowSettingsManager.shared.closeWindowsOnPlay ? .transient : .applicationDefined
-    }
+    /// Siempre `.applicationDefined`: nunca dejamos que `NSPopover` decida
+    /// por su cuenta cuándo cerrarse (su modo `.transient` lo cierra en
+    /// cuanto CUALQUIER otra ventana pasa a ser la key window, incluida la
+    /// playlist acoplada/flotante que abrimos nosotros mismos — así se
+    /// cerraba la principal nada más pulsar "Mostrar playlist"). En su
+    /// lugar, `closeCompanionWindowsIfFocusLost` implementa el mismo cierre
+    /// automático a mano, pero sabiendo distinguir "el foco pasó a la otra
+    /// ventana nuestra" (no cerrar) de "el foco se fue de verdad" (cerrar
+    /// ambas).
+    private static let popoverBehavior: NSPopover.Behavior = .applicationDefined
 
     /// Con "ocultar y mostrar automáticamente la barra de menús" activo,
     /// `NSPopover.show(relativeTo:of:)` calcula la posición como si la barra

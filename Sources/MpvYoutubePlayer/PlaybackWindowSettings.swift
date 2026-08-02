@@ -9,6 +9,7 @@ final class PlaybackWindowSettingsManager: ObservableObject {
     private static let hideWindowKey = "hideWindowForAudioOnly"
     private static let closeWindowsOnPlayKey = "closeWindowsOnPlay"
     private static let alwaysOnTopKey = "alwaysOnTop"
+    private static let playlistVisibleKey = "playlistVisible"
 
     @Published var hideWindowForAudioOnly: Bool {
         didSet { UserDefaults.standard.set(hideWindowForAudioOnly, forKey: Self.hideWindowKey) }
@@ -28,6 +29,14 @@ final class PlaybackWindowSettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(alwaysOnTop, forKey: Self.alwaysOnTopKey) }
     }
 
+    /// Recuerda si la playlist estaba visible la última vez que se
+    /// mostró/ocultó desde el botón de la ventana principal, para que al
+    /// volver a abrir esa ventana (o al reiniciar la app) la playlist
+    /// aparezca en el mismo estado en el que se dejó.
+    @Published var playlistVisible: Bool {
+        didSet { UserDefaults.standard.set(playlistVisible, forKey: Self.playlistVisibleKey) }
+    }
+
     private init() {
         hideWindowForAudioOnly = UserDefaults.standard.bool(forKey: Self.hideWindowKey)
         if UserDefaults.standard.object(forKey: Self.closeWindowsOnPlayKey) == nil {
@@ -36,5 +45,6 @@ final class PlaybackWindowSettingsManager: ObservableObject {
             closeWindowsOnPlay = UserDefaults.standard.bool(forKey: Self.closeWindowsOnPlayKey)
         }
         alwaysOnTop = UserDefaults.standard.bool(forKey: Self.alwaysOnTopKey)
+        playlistVisible = UserDefaults.standard.bool(forKey: Self.playlistVisibleKey)
     }
 }
