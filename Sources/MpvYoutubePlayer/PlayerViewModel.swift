@@ -266,6 +266,21 @@ final class PlayerViewModel: ObservableObject {
         MPVLauncher.seek(to: seconds)
     }
 
+    /// Salta hacia adelante/atrás desde la posición actual (p. ej. con las
+    /// flechas del teclado). No hace nada si no hay nada cargado en mpv.
+    func seekRelative(by deltaSeconds: Double) {
+        guard currentlyPlayingItemID != nil else { return }
+        currentTimeSeconds = max(0, min(durationSeconds, currentTimeSeconds + deltaSeconds))
+        MPVLauncher.seek(by: deltaSeconds)
+    }
+
+    /// Sube/baja el volumen (p. ej. con las flechas del teclado). Al igual
+    /// que el slider de volumen, funciona aunque no haya nada reproduciendo:
+    /// solo ajusta `volume`, cuyo `didSet` se encarga de aplicarlo.
+    func adjustVolume(by delta: Double) {
+        volume = max(0, min(100, volume + delta))
+    }
+
     private func handleTitleResolved(_ title: String) {
         guard let id = currentlyPlayingItemID else { return }
         playlistStore.updateTitle(for: id, title: title)

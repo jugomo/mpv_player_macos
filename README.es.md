@@ -99,7 +99,9 @@ reproducción, usa los botones de anterior/reproducir-pausar/detener/
 siguiente del popover (o las teclas multimedia / Centro de Control) para
 controlarlo, arrastra la barra de progreso para saltar a una posición, y
 usa el slider de volumen para ajustar solo la reproducción de esta app —
-nunca toca el volumen del sistema de macOS. Si hay vídeo, aparecen un
+nunca toca el volumen del sistema de macOS. Con el popover activo, las
+flechas ← → saltan 5 segundos atrás/adelante y las flechas ↑ ↓ ajustan
+el volumen. Si hay vídeo, aparecen un
 botón de pantalla completa y otro de fijar siempre encima (un pin) junto
 al de playlist — el estado del pin se recuerda entre vídeos y entre
 reinicios de la app, así que la ventana de `mpv` arranca ya fijada encima

@@ -381,6 +381,16 @@ enum MPVLauncher {
         client?.send(command: ["set_property", "time-pos", seconds])
     }
 
+    /// Salta relativamente (en segundos, puede ser negativo) desde la
+    /// posición actual del mpv en marcha a través del IPC server. No hace
+    /// nada si no hay ningún mpv en marcha.
+    static func seek(by deltaSeconds: Double) {
+        processesLock.lock()
+        let client = currentIPCClient
+        processesLock.unlock()
+        client?.send(command: ["seek", deltaSeconds, "relative"])
+    }
+
     /// Alterna pantalla completa del mpv actual a través del IPC server. No
     /// hace nada si no hay ningún mpv en marcha.
     static func toggleFullscreen() {

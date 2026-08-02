@@ -73,10 +73,34 @@ struct PlayerView: View {
         }
         .padding(Self.contentPadding)
         .frame(width: Self.windowWidth)
+        .background(seekKeyboardShortcuts)
         .onAppear {
             viewModel.refreshDependencyStatus()
             viewModel.prefillURLFromClipboardIfEmpty()
         }
+    }
+
+    /// Atajos de teclado invisibles: flechas izquierda/derecha saltan 5s
+    /// atrás/adelante en la reproducción actual, arriba/abajo suben/bajan el
+    /// volumen.
+    @ViewBuilder
+    private var seekKeyboardShortcuts: some View {
+        Group {
+            Group {
+                Button("") { viewModel.seekRelative(by: -5) }
+                    .keyboardShortcut(.leftArrow, modifiers: [])
+                Button("") { viewModel.seekRelative(by: 5) }
+                    .keyboardShortcut(.rightArrow, modifiers: [])
+            }
+            .disabled(viewModel.currentlyPlayingItemID == nil)
+
+            Button("") { viewModel.adjustVolume(by: 5) }
+                .keyboardShortcut(.upArrow, modifiers: [])
+            Button("") { viewModel.adjustVolume(by: -5) }
+                .keyboardShortcut(.downArrow, modifiers: [])
+        }
+        .opacity(0)
+        .accessibilityHidden(true)
     }
 
     @ViewBuilder

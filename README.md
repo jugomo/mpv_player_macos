@@ -95,7 +95,9 @@ While a video loads, the menu bar icon spins; it switches back as soon as
 previous/play-pause/stop/next buttons in the popover (or the keyboard
 media keys / Control Center) to control it, drag the seek bar to jump to a
 position, and use the volume slider to adjust this app's playback only —
-it never touches macOS's system volume. If there's video, a fullscreen
+it never touches macOS's system volume. With the popover focused, the
+← → arrow keys seek 5 seconds back/forward and the ↑ ↓ arrow keys adjust
+the volume. If there's video, a fullscreen
 button and an always-on-top (pin) button show up next to the playlist
 button — the pin toggle is remembered across videos and app restarts, so
 `mpv`'s window starts already pinned above other windows if you left it
