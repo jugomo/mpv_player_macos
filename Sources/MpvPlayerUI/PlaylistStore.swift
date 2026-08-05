@@ -19,7 +19,7 @@ final class PlaylistStore: ObservableObject {
 
     init() {
         let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("MpvYoutubePlayer", isDirectory: true)
+            .appendingPathComponent("MpvPlayerUI", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         fileURL = dir.appendingPathComponent("playlist.json")
         load()

@@ -25,6 +25,7 @@ enum LKey {
     case mpvNotInstalled, ytdlpNotInstalled, homebrewNotInstalledEither
     case openTerminalToInstallHomebrew, installWithHomebrew
     case aboutCredit, helpSectionTitle, helpBody
+    case creditsSectionTitle, creditsMpvDescription, creditsYtdlpDescription, creditsDisclaimer
     case playlistTitle, importEllipsis, exportEllipsis, noVideosYet
     case doubleClickToPlay, qualityTooltip, copyUrlTooltip, removeFromPlaylistTooltip
     case exportFailedPrefix, importFailedPrefix
@@ -73,7 +74,7 @@ final class LocalizationManager: ObservableObject {
     }
 
     private static let translations: [LKey: (es: String, en: String)] = [
-        .appTitle: ("mpv YouTube Player", "mpv YouTube Player"),
+        .appTitle: ("mpv player UI", "mpv player UI"),
         .help: ("Ayuda", "Help"),
         .close: ("Cerrar", "Close"),
         .settings: ("Ajustes", "Settings"),
@@ -101,19 +102,33 @@ final class LocalizationManager: ObservableObject {
         .helpSectionTitle: ("Ayuda", "Help"),
         .helpBody: (
             """
-            1. Pega la URL de un vídeo de YouTube o escríbela en el campo de texto.
+            1. Pega la URL de un vídeo o escríbela en el campo de texto.
             2. Elige la calidad de vídeo (o "Solo audio").
             3. Pulsa Reproducir para abrir mpv.
             4. Usa el botón Playlist para ver, reproducir de nuevo o exportar tus vídeos anteriores.
             5. Clic derecho en el icono de la barra de menú para abrir Ajustes o salir de la app.
             """,
             """
-            1. Paste a YouTube video URL or type it into the text field.
+            1. Paste a video URL or type it into the text field.
             2. Choose the video quality (or "Audio only").
             3. Press Play to open mpv.
             4. Use the Playlist button to view, replay, or export your previous videos.
             5. Right-click the menu bar icon to open Settings or quit the app.
             """
+        ),
+
+        .creditsSectionTitle: ("Créditos", "Credits"),
+        .creditsMpvDescription: (
+            "Reproductor multimedia de código abierto usado para reproducir los vídeos.",
+            "Open-source media player used to play the videos."
+        ),
+        .creditsYtdlpDescription: (
+            "Herramienta de línea de comandos de código abierto usada para descargar y extraer los vídeos de YouTube.",
+            "Open-source command-line tool used to download and extract YouTube videos."
+        ),
+        .creditsDisclaimer: (
+            "Proyecto personal sin afiliación con YouTube ni Google. Usa bajo tu propio riesgo, no se ofrece ayuda o soporte.",
+            "Personal project, not affiliated with YouTube or Google. Use at your own risk, no help or support is provided."
         ),
 
         .playlistTitle: ("Playlist", "Playlist"),

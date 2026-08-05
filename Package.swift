@@ -2,14 +2,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "MpvYoutubePlayer",
+    name: "MpvPlayerUI",
     platforms: [
         .macOS(.v13)
     ],
     targets: [
         .executableTarget(
-            name: "MpvYoutubePlayer",
-            path: "Sources/MpvYoutubePlayer"
+            name: "MpvPlayerUI",
+            path: "Sources/MpvPlayerUI"
         )
     ]
 )

@@ -1,7 +1,7 @@
 import AppKit
 
 @main
-struct MpvYoutubePlayerMain {
+struct MpvPlayerUIMain {
     @MainActor
     static func main() {
         let app = NSApplication.shared

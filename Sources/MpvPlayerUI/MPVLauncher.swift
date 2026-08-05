@@ -437,7 +437,7 @@ enum MPVLauncher {
 
     private static func logFileURL() -> URL {
         let dir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Logs/MpvYoutubePlayer", isDirectory: true)
+            .appendingPathComponent("Logs/MpvPlayerUI", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let logPath = dir.appendingPathComponent("mpv.log")
         if !FileManager.default.fileExists(atPath: logPath.path) {

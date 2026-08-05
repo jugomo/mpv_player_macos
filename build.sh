@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-APP_NAME="MpvYoutubePlayer"
+APP_NAME="MpvPlayerUI"
 BUNDLE="${APP_NAME}.app"
 
 echo "==> Compilando en modo release…"

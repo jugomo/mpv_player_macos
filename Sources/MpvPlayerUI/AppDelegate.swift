@@ -45,7 +45,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv YouTube Player")
+            button.image = NSImage(systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv player UI")
             button.action = #selector(handleStatusItemClick(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -148,11 +148,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showIdleIcon() {
-        statusItem.button?.image = NSImage(systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv YouTube Player")
+        statusItem.button?.image = NSImage(systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv player UI")
     }
 
     private func showPlayingIcon() {
-        statusItem.button?.image = NSImage(systemSymbolName: Self.statusIconName, accessibilityDescription: "mpv YouTube Player")
+        statusItem.button?.image = NSImage(systemSymbolName: Self.statusIconName, accessibilityDescription: "mpv player UI")
     }
 
     /// Sustituye el icono normal por uno giratorio mientras mpv/yt-dlp
@@ -220,7 +220,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         button.image = NSImage(
             systemSymbolName: isShowingPausedIcon ? Self.pausedIconName : Self.statusIconName,
-            accessibilityDescription: "mpv YouTube Player"
+            accessibilityDescription: "mpv player UI"
         )
     }
 

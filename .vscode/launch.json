@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:mpv_player_macos}",
+      "name": "Debug MpvPlayerUI",
+      "target": "MpvPlayerUI",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug MpvPlayerUI"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:mpv_player_macos}",
+      "name": "Release MpvPlayerUI",
+      "target": "MpvPlayerUI",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release MpvPlayerUI"
+    }
+  ]
+}
