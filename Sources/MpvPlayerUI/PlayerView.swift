@@ -231,8 +231,7 @@ struct PlayerView: View {
 
             if viewModel.showVUMeters {
                 VUMeterView(
-                    leftLevel: viewModel.leftLevel,
-                    rightLevel: viewModel.rightLevel,
+                    levels: viewModel.audioLevels,
                     isSettling: viewModel.isPaused || viewModel.currentlyPlayingItemID == nil
                 )
             }

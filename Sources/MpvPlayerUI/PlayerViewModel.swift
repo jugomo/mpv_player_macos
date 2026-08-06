@@ -41,9 +41,36 @@ final class PlayerViewModel: ObservableObject {
 
     /// Nivel de señal normalizado (0...1) de los canales izquierdo/derecho,
     /// usado por el vúmetro en modo solo audio. Se derivan del RMS en dB que
-    /// reporta mpv por IPC (ver `handleAudioLevelsChanged`).
-    @Published private(set) var leftLevel: Double = 0
-    @Published private(set) var rightLevel: Double = 0
+    /// reporta mpv por IPC (ver `handleAudioLevelsChanged`). Vive en su
+    /// propio `ObservableObject` (no como `@Published` de este modelo) para
+    /// que sus actualizaciones —varias decenas por segundo, sin límite por
+    /// parte de mpv— solo invaliden `VUMeterView` en vez de re-layoutear
+    /// toda `PlayerView` en cada una (ver `AudioLevelsModel`).
+    let audioLevels = AudioLevelsModel()
+    /// Última vez que se aplicó una actualización a `audioLevels`, para
+    /// limitarlas a ~30 Hz en `handleAudioLevelsChanged`: la animación del
+    /// vúmetro usa 0.15s/1.6s de duración, así que no hay pérdida visual
+    /// perceptible al descartar el resto de eventos entre medias.
+    private var lastAudioLevelsUpdate: CFAbsoluteTime = 0
+    private static let audioLevelsMinInterval: CFAbsoluteTime = 1.0 / 30.0
+
+    /// `true` mientras el popover principal está visible en pantalla. mpv
+    /// sigue reproduciendo (y emitiendo eventos por IPC) aunque el usuario
+    /// cierre el popover — es el comportamiento "fire-and-forget" documentado
+    /// en `MPVLauncher.play` — pero `NSHostingController` no deja de
+    /// reaccionar a cambios de `@Published`/`ObservableObject` solo porque su
+    /// ventana esté cerrada/fuera de pantalla: se confirmó con `sample` que,
+    /// incluso con 0 ventanas visibles, cada actualización de estado seguía
+    /// disparando un recálculo de layout de toda la vista (SwiftUI necesita
+    /// el `sizeThatFits` completo del árbol para saber si el popover debe
+    /// cambiar de tamaño, no solo repintar lo que cambió). Medido contra el
+    /// socket IPC real: `af-metadata/vu` y `time-pos` llegan cada uno a
+    /// ~18 eventos/segundo mientras reproduce, muy por encima de lo que
+    /// necesita ninguna UI. Puesto por `AppDelegate` en sus callbacks de
+    /// `NSPopoverDelegate`; con el popover cerrado, `handleAudioLevelsChanged`,
+    /// `handleTimePositionChanged` y `handleDurationChanged` descartan los
+    /// eventos entrantes sin tocar el estado observable.
+    var isWindowVisible: Bool = false
 
     /// Whether to show the VU meter. `true` mientras se reproduce un item de
     /// solo audio, y se mantiene brevemente tras pausar/detener para dar
@@ -173,8 +200,8 @@ final class PlayerViewModel: ObservableObject {
         currentTimeSeconds = 0
         durationSeconds = 0
         isScrubbing = false
-        leftLevel = 0
-        rightLevel = 0
+        audioLevels.left = 0
+        audioLevels.right = 0
         onPauseStateChanged?(false)
         onPlaybackStopped?()
         // Salvaguarda: si mpv termina antes de llegar a mostrar vídeo (p.ej.
@@ -187,7 +214,7 @@ final class PlayerViewModel: ObservableObject {
         MPNowPlayingInfoCenter.default().playbackState = .stopped
 
         // El vúmetro se retira con retardo (no al instante) para que la
-        // caída a 0dB forzada arriba (leftLevel/rightLevel = 0) tenga tiempo
+        // caída a 0dB forzada arriba (audioLevels.left/right = 0) tenga tiempo
         // de animarse; si ya estaba oculto (era vídeo, o no había nada
         // cargado) no hace falta ningún retardo.
         if showVUMeters {
@@ -208,8 +235,8 @@ final class PlayerViewModel: ObservableObject {
             // Sin nada nuevo que medir mientras está en pausa, los niveles se
             // fuerzan a 0 aquí para que la vista los anime cayendo a 0dB en
             // vez de quedarse congelados en el último valor recibido.
-            leftLevel = 0
-            rightLevel = 0
+            audioLevels.left = 0
+            audioLevels.right = 0
         }
         onPauseStateChanged?(paused)
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
@@ -219,11 +246,29 @@ final class PlayerViewModel: ObservableObject {
     }
 
     private func handleTimePositionChanged(_ seconds: Double) {
-        guard !isScrubbing else { return }
+        // `time-pos` no está limitado a ~1/s como sugería el comentario
+        // original: medido en vivo contra el socket IPC de mpv, llega a
+        // ~18 eventos/segundo. Sin el filtro de `isWindowVisible` (igual que
+        // en `handleAudioLevelsChanged`), cada uno mutaba `currentTimeSeconds`
+        // y disparaba el mismo re-layout completo de `PlayerView` aunque el
+        // popover llevara cerrado todo ese tiempo — la causa del ~22% de CPU
+        // que seguía viéndose tras aislar/limitar solo el vúmetro.
+        guard isWindowVisible, !isScrubbing else { return }
         currentTimeSeconds = seconds
     }
 
     private func handleDurationChanged(_ seconds: Double) {
+        // A diferencia de `time-pos`/`af-metadata/vu` (~18 eventos/s, se
+        // recuperan solos en milisegundos al reabrir el popover), mpv solo
+        // notifica `duration` una vez por pista, al conocerla justo tras
+        // cargar el archivo, y no la repite si no cambia. Filtrarla por
+        // `isWindowVisible` como a las demás perdía ese único evento para
+        // siempre si el popover estaba cerrado en ese instante, dejando
+        // `durationSeconds` a 0 el resto de la sesión — con lo que la barra
+        // de progreso (rango `0...max(duration, 1)`, deshabilitada si
+        // `duration <= 0`) se quedaba pegada al final y sin poder arrastrarse
+        // al reabrir. Al ser un evento tan infrecuente, aplicarlo siempre
+        // (aunque el popover esté cerrado) no reintroduce el problema de CPU.
         durationSeconds = seconds
     }
 
@@ -256,9 +301,13 @@ final class PlayerViewModel: ObservableObject {
     /// vúmetro congelado en vez de caer — el bug era exactamente esta
     /// carrera, no la animación en sí.
     private func handleAudioLevelsChanged(token: Int, leftDB: Double, rightDB: Double) {
+        guard isWindowVisible else { return }
         guard token == loadingToken, currentlyPlayingItemID != nil, !isPaused else { return }
-        leftLevel = Self.normalizedLevel(fromDB: leftDB, volumePercent: volume)
-        rightLevel = Self.normalizedLevel(fromDB: rightDB, volumePercent: volume)
+        let now = CFAbsoluteTimeGetCurrent()
+        guard now - lastAudioLevelsUpdate >= Self.audioLevelsMinInterval else { return }
+        lastAudioLevelsUpdate = now
+        audioLevels.left = Self.normalizedLevel(fromDB: leftDB, volumePercent: volume)
+        audioLevels.right = Self.normalizedLevel(fromDB: rightDB, volumePercent: volume)
     }
 
     /// Called continuously while the user drags the seek bar, to reflect the
@@ -368,8 +417,9 @@ final class PlayerViewModel: ObservableObject {
             currentTimeSeconds = 0
             durationSeconds = 0
             isScrubbing = false
-            leftLevel = 0
-            rightLevel = 0
+            audioLevels.left = 0
+            audioLevels.right = 0
+            lastAudioLevelsUpdate = 0
             vuMeterHideTask?.cancel()
             vuMeterHideTask = nil
             showVUMeters = effectiveQuality == .audioOnly

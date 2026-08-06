@@ -1,12 +1,25 @@
 import SwiftUI
 
+/// Niveles de señal del vúmetro, aislados en su propio `ObservableObject` en
+/// vez de vivir en `PlayerViewModel`: mpv reporta `af-metadata/vu` a la
+/// cadencia de sus fotogramas de audio (varias decenas de veces por
+/// segundo, sin limitar), y si esos valores fueran `@Published` del modelo
+/// gigante que observa toda `PlayerView`, cada actualización invalidaría y
+/// re-layoutearía la ventana entera (título, botones, seek bar, miniatura...)
+/// en vez de solo este vúmetro — coste medido en torno al 40% de CPU
+/// sostenido mientras el vúmetro está visible. Al vivir aquí, solo
+/// `VUMeterView` se reevalúa en cada actualización.
+final class AudioLevelsModel: ObservableObject {
+    @Published var left: Double = 0
+    @Published var right: Double = 0
+}
+
 /// Vúmetro estéreo mostrado durante la reproducción en modo solo audio,
 /// entre la barra de controles y el título. Un clic alterna entre el estilo
 /// digital (tiras LED) y el analógico (agujas), recordado en
 /// `VUMeterSettingsManager`.
 struct VUMeterView: View {
-    let leftLevel: Double
-    let rightLevel: Double
+    @ObservedObject var levels: AudioLevelsModel
     /// `true` mientras está en pausa o recién detenida (ver `showVUMeters` /
     /// `handlePauseChanged` en `PlayerViewModel`): la aguja/LEDs usan una
     /// animación mucho más lenta para caer a 0dB, en vez del seguimiento
@@ -19,9 +32,9 @@ struct VUMeterView: View {
         Group {
             switch settings.style {
             case .digital:
-                DigitalVUMeterView(leftLevel: leftLevel, rightLevel: rightLevel, isSettling: isSettling)
+                DigitalVUMeterView(leftLevel: levels.left, rightLevel: levels.right, isSettling: isSettling)
             case .analog:
-                AnalogVUMeterView(leftLevel: leftLevel, rightLevel: rightLevel, isSettling: isSettling)
+                AnalogVUMeterView(leftLevel: levels.left, rightLevel: levels.right, isSettling: isSettling)
             }
         }
         .contentShape(Rectangle())

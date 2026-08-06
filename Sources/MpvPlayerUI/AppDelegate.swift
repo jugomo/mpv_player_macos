@@ -712,11 +712,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 extension AppDelegate: NSPopoverDelegate {
+    /// Marca el popover como visible para que `PlayerViewModel` reanude las
+    /// actualizaciones del vúmetro (ver `isWindowVisible`), congeladas
+    /// mientras estaba cerrado.
+    func popoverDidShow(_ notification: Notification) {
+        viewModel.isWindowVisible = true
+    }
+
     /// Al cerrarse la ventana principal (botón de la barra de menú, clic
     /// fuera con comportamiento `.transient`, etc.), la playlist deja de
     /// tener sentido visible —sobre todo acoplada, ya que quedaría flotando
     /// sola sin nada a lo que estar pegada— así que se oculta junto con ella.
+    ///
+    /// También marca el popover como no visible para que `PlayerViewModel`
+    /// deje de aplicar las actualizaciones del vúmetro que mpv sigue
+    /// mandando por IPC mientras reproduce en segundo plano (ver
+    /// `isWindowVisible`): sin esto, `NSHostingController` seguía
+    /// recalculando el layout completo de la vista en cada una aunque no
+    /// hubiera ninguna ventana en pantalla.
     func popoverDidClose(_ notification: Notification) {
+        viewModel.isWindowVisible = false
         if viewModel.isPlaylistVisible {
             hidePlaylistWindow()
         }
