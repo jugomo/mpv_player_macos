@@ -7,6 +7,7 @@ private let playlistUTType = UTType(filenameExtension: "pl") ?? .json
 struct PlaylistView: View {
     @ObservedObject var store: PlaylistStore
     @ObservedObject var viewModel: PlayerViewModel
+    @ObservedObject var downloads: DownloadManager
     @ObservedObject private var loc = LocalizationManager.shared
     var isDocked: Bool = false
     var onItemPlayed: (() -> Void)?
@@ -93,6 +94,8 @@ struct PlaylistView: View {
 
                                     Spacer()
 
+                                    downloadButton(for: item)
+
                                     Button {
                                         copyToClipboard(item.urlString)
                                     } label: {
@@ -123,6 +126,72 @@ struct PlaylistView: View {
         }
         .padding(16)
         .frame(minWidth: isDocked ? 260 : 420, idealWidth: isDocked ? 320 : 460, minHeight: 320, idealHeight: 480)
+    }
+
+    /// Botón de descarga por fila. Su icono y acción dependen del estado de la
+    /// descarga de ese ítem (ver `DownloadManager.DownloadState`): descargar,
+    /// progreso + cancelar, hecho (revelar en Finder) o error (reintentar).
+    @ViewBuilder
+    private func downloadButton(for item: PlaylistItem) -> some View {
+        let isAudio = item.quality == .audioOnly
+        switch downloads.state(for: item.id) {
+        case .idle:
+            Button {
+                startDownload(item)
+            } label: {
+                Image(systemName: isAudio ? "square.and.arrow.down.on.square" : "square.and.arrow.down")
+            }
+            .buttonStyle(.borderless)
+            .disabled(viewModel.status.ytdlpPath == nil)
+            .help(downloadIdleTooltip(isAudio: isAudio))
+
+        case .downloading(let progress):
+            Button {
+                downloads.cancel(item.id)
+            } label: {
+                if let progress {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                } else {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .controlSize(.small)
+                }
+            }
+            .buttonStyle(.borderless)
+            .help(loc.t(.cancelDownloadTooltip))
+
+        case .finished(let url):
+            Button {
+                downloads.revealInFinder(url)
+            } label: {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
+            .buttonStyle(.borderless)
+            .help(loc.t(.revealInFinderTooltip))
+
+        case .failed(let message):
+            Button {
+                startDownload(item)
+            } label: {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+            }
+            .buttonStyle(.borderless)
+            .help(loc.t(.retryDownloadTooltip) + "\n" + message)
+        }
+    }
+
+    private func downloadIdleTooltip(isAudio: Bool) -> String {
+        if viewModel.status.ytdlpPath == nil { return loc.t(.downloadNeedsYtdlp) }
+        return loc.t(isAudio ? .downloadMp3Tooltip : .downloadTooltip)
+    }
+
+    private func startDownload(_ item: PlaylistItem) {
+        guard let ytdlpPath = viewModel.status.ytdlpPath else { return }
+        downloads.download(item: item, ytdlpPath: ytdlpPath, ffmpegPath: viewModel.status.ffmpegPath)
     }
 
     private func qualityBinding(for item: PlaylistItem) -> Binding<VideoQuality> {

@@ -50,6 +50,44 @@ enum VideoQuality: String, CaseIterable, Identifiable, Codable {
         }
     }
 
+    /// Argumentos para descargar este ítem con `yt-dlp` a `outputTemplate`
+    /// (una plantilla de salida tipo `.../%(title)s.%(ext)s`). En modo solo
+    /// audio extrae la pista de audio y la convierte a MP3; en el resto
+    /// descarga el vídeo con la calidad seleccionada, fusionando las pistas
+    /// de vídeo y audio separadas en un único MP4. Ambos casos requieren
+    /// ffmpeg (ver `DownloadManager`).
+    ///
+    /// `--newline` hace que cada actualización de progreso salga en su propia
+    /// línea (en vez de reescribir la misma con retorno de carro), para poder
+    /// parsear el porcentaje de forma fiable. `--print` imprime la ruta final
+    /// del archivo ya movido, con un prefijo que la distingue de las líneas de
+    /// progreso.
+    func downloadArguments(url: String, outputTemplate: String, ffmpegLocation: String?) -> [String] {
+        var args = [
+            "--no-playlist",
+            "--no-warnings",
+            "--newline",
+            "-o", outputTemplate,
+            "--print", "after_move:\(DownloadManager.finalPathPrefix)%(filepath)s",
+        ]
+        if let ffmpegLocation {
+            args.append(contentsOf: ["--ffmpeg-location", ffmpegLocation])
+        }
+        if self == .audioOnly {
+            args.append(contentsOf: [
+                "-f", "bestaudio/best",
+                "-x", "--audio-format", "mp3", "--audio-quality", "0",
+            ])
+        } else {
+            args.append(contentsOf: [
+                "-f", ytdlFormat,
+                "--merge-output-format", "mp4",
+            ])
+        }
+        args.append(url)
+        return args
+    }
+
     /// Opciones de script-opts requeridas por esta calidad (se fusionan con
     /// otras en un único flag --script-opts, que en mpv no se acumula si se
     /// repite el flag).

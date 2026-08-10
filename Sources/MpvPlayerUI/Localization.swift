@@ -41,6 +41,9 @@ enum LKey {
     case showDescriptionTooltip
     case dockPlaylistTooltip, undockPlaylistTooltip
     case showPlaylistTooltip, hidePlaylistTooltip
+    case downloadTooltip, downloadMp3Tooltip, cancelDownloadTooltip
+    case revealInFinderTooltip, retryDownloadTooltip
+    case downloadNeedsYtdlp, downloadNeedsFfmpeg, downloadFailedGeneric
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -190,5 +193,20 @@ final class LocalizationManager: ObservableObject {
         .undockPlaylistTooltip: ("Desacoplar a ventana flotante", "Undock to a floating window"),
         .showPlaylistTooltip: ("Mostrar playlist", "Show playlist"),
         .hidePlaylistTooltip: ("Ocultar playlist", "Hide playlist"),
+
+        .downloadTooltip: (
+            "Descargar vídeo con la calidad seleccionada",
+            "Download video at the selected quality"
+        ),
+        .downloadMp3Tooltip: ("Descargar audio como MP3", "Download audio as MP3"),
+        .cancelDownloadTooltip: ("Cancelar descarga", "Cancel download"),
+        .revealInFinderTooltip: ("Mostrar en el Finder", "Show in Finder"),
+        .retryDownloadTooltip: ("La descarga falló. Clic para reintentar", "Download failed. Click to retry"),
+        .downloadNeedsYtdlp: ("Se necesita yt-dlp para descargar", "yt-dlp is required to download"),
+        .downloadNeedsFfmpeg: (
+            "Se necesita ffmpeg para descargar (instálalo con Homebrew: brew install ffmpeg)",
+            "ffmpeg is required to download (install it with Homebrew: brew install ffmpeg)"
+        ),
+        .downloadFailedGeneric: ("No se pudo completar la descarga.", "The download could not be completed."),
     ]
 }

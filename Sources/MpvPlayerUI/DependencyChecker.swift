@@ -12,10 +12,17 @@ struct DependencyStatus {
     var brewPath: String?
     var mpvPath: String?
     var ytdlpPath: String?
+    /// Ruta a ffmpeg, si está disponible. Necesario para que la descarga de
+    /// la playlist (ver `DownloadManager`) pueda fusionar las pistas de vídeo
+    /// y audio separadas de YouTube y convertir a MP3 en modo solo audio.
+    /// Opcional: la reproducción normal no lo requiere (mpv enlaza sus
+    /// propias librerías de ffmpeg, no el binario).
+    var ffmpegPath: String?
 
     var isBrewInstalled: Bool { brewPath != nil }
     var isMpvInstalled: Bool { mpvPath != nil }
     var isYtdlpInstalled: Bool { ytdlpPath != nil }
+    var isFfmpegInstalled: Bool { ffmpegPath != nil }
     var isReady: Bool { isMpvInstalled && isYtdlpInstalled }
 }
 
@@ -24,7 +31,8 @@ enum DependencyChecker {
         DependencyStatus(
             brewPath: findExecutable(named: "brew"),
             mpvPath: bundledExecutable(named: "mpv") ?? findExecutable(named: "mpv"),
-            ytdlpPath: bundledExecutable(named: "yt-dlp") ?? findExecutable(named: "yt-dlp")
+            ytdlpPath: bundledExecutable(named: "yt-dlp") ?? findExecutable(named: "yt-dlp"),
+            ffmpegPath: bundledExecutable(named: "ffmpeg") ?? findExecutable(named: "ffmpeg")
         )
     }
 

@@ -27,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isShowingPausedIcon = false
     private var popover: NSPopover!
     private let playlistStore = PlaylistStore()
+    private let downloadManager = DownloadManager()
     private lazy var viewModel = PlayerViewModel(playlistStore: playlistStore)
     private var playlistWindow: NSWindow?
     private var playlistHostingController: NSHostingController<PlaylistView>?
@@ -234,6 +235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         PlaylistView(
             store: playlistStore,
             viewModel: viewModel,
+            downloads: downloadManager,
             isDocked: docked,
             onItemPlayed: { [weak self] in
                 if PlaybackWindowSettingsManager.shared.closeWindowsOnPlay {
