@@ -647,7 +647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MPVLauncher.terminateAllRunningProcesses()
+        MPVLauncher.terminateSession()
     }
 
     private func togglePopover(_ sender: NSStatusBarButton) {

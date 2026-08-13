@@ -6,6 +6,11 @@ import Foundation
 /// marcha y para observar cambios de propiedades (`pause`, `media-title`),
 /// ya que mpv corre como proceso aparte y no hay otra forma de controlarlo
 /// ni de leer su estado una vez lanzado.
+///
+/// Una misma instancia vive durante toda la sesión de reproducción (ver
+/// `MPVLauncher`), reutilizada para muchos vídeos seguidos en vez de una por
+/// vídeo: `prepareForNewLoad` rearma sus callbacks y estado "por vídeo" antes
+/// de cada `loadFile`.
 final class MPVIPCClient {
     private let fileHandle: FileHandle
     private var buffer = Data()
@@ -22,8 +27,8 @@ final class MPVIPCClient {
     var onTimePositionChanged: ((Double) -> Void)?
     var onDurationChanged: ((Double) -> Void)?
     /// Niveles RMS (en dB) de los canales izquierdo/derecho, leídos del filtro
-    /// de audio `astats` (ver `VideoQuality.mpvArguments`) para alimentar el
-    /// vúmetro en modo solo audio. `-inf` en silencio.
+    /// de audio `astats` (ver `VideoQuality.loadFileOptions`) para alimentar
+    /// el vúmetro en modo solo audio. `-inf` en silencio.
     var onAudioLevelsChanged: ((Double, Double) -> Void)?
     /// Se dispara una única vez por reproducción, en el momento en que mpv
     /// realmente empieza a mostrar el vídeo (evento `playback-restart`), con
@@ -35,6 +40,13 @@ final class MPVIPCClient {
     /// entregarlo en `onPlaybackReady` (ver `"playback-restart"` en
     /// `handle(_:)`).
     private var latestMediaTitle: String?
+    /// Se dispara cuando el vídeo actualmente cargado termina (evento
+    /// `end-file` con motivo `eof`/`error`) — la señal de "reproducción
+    /// terminada" para el vídeo en curso, independiente de que el proceso
+    /// mpv siga vivo e inactivo (`--idle=yes`) esperando el próximo
+    /// `loadFile`. Ver `MPVLauncher.terminateSession`/`terminationHandler`
+    /// para la señal equivalente cuando el proceso muere de verdad.
+    var onPlaybackEnded: (() -> Void)?
 
     init?(socketPath: String) {
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
@@ -72,7 +84,21 @@ final class MPVIPCClient {
         }
     }
 
+    /// El `readabilityHandler` de `FileHandle` no garantiza en qué hilo
+    /// corre. Antes bastaba con despachar cada callback final a main (el
+    /// estado mutable de la instancia —`hasNotifiedPlaybackReady`,
+    /// `latestMediaTitle`— solo se tocaba una vez en toda la vida del
+    /// cliente), pero ahora la misma instancia se reutiliza y resetea en
+    /// cada vídeo (`prepareForNewLoad`, llamado siempre desde main), así que
+    /// hay que confinar también la lectura/escritura de ese estado a main
+    /// para no correr con esos resets.
     private func handle(_ data: Data) {
+        DispatchQueue.main.async { [weak self] in
+            self?.processLines(of: data)
+        }
+    }
+
+    private func processLines(of data: Data) {
         buffer.append(data)
         while let newlineIndex = buffer.firstIndex(of: 0x0a) {
             let lineData = buffer.subdata(in: buffer.startIndex..<newlineIndex)
@@ -86,32 +112,22 @@ final class MPVIPCClient {
                 switch name {
                 case "pause":
                     guard let paused = object["data"] as? Bool else { continue }
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onPauseChanged?(paused)
-                    }
+                    onPauseChanged?(paused)
                 case "media-title":
                     guard let title = object["data"] as? String, !title.isEmpty else { continue }
                     latestMediaTitle = title
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onMediaTitleChanged?(title)
-                    }
+                    onMediaTitleChanged?(title)
                 case "time-pos":
                     guard let seconds = object["data"] as? Double else { continue }
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onTimePositionChanged?(seconds)
-                    }
+                    onTimePositionChanged?(seconds)
                 case "duration":
                     guard let seconds = object["data"] as? Double else { continue }
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onDurationChanged?(seconds)
-                    }
+                    onDurationChanged?(seconds)
                 case "af-metadata/vu":
                     guard let data = object["data"] as? [String: Any] else { continue }
                     let left = Self.dBValue(data["lavfi.astats.1.RMS_level"])
                     let right = Self.dBValue(data["lavfi.astats.2.RMS_level"])
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onAudioLevelsChanged?(left, right)
-                    }
+                    onAudioLevelsChanged?(left, right)
                 default:
                     break
                 }
@@ -124,10 +140,18 @@ final class MPVIPCClient {
                 // usuario ve la ventana.
                 if !hasNotifiedPlaybackReady, let title = latestMediaTitle {
                     hasNotifiedPlaybackReady = true
-                    DispatchQueue.main.async { [weak self] in
-                        self?.onPlaybackReady?(title)
-                    }
+                    onPlaybackReady?(title)
                 }
+            case "end-file":
+                // "stop": lo genera nuestro propio `loadFile` al reemplazar
+                // el archivo en curso, no es un fin de reproducción real.
+                // "quit": el proceso está terminando del todo, ya cubierto
+                // por `MPVLauncher`'s `terminationHandler`.
+                // "redirect": resolución interna de `ytdl_hook` (ocurre en
+                // casi toda carga de YouTube), tampoco es un fin real.
+                guard let reason = object["reason"] as? String,
+                      reason == "eof" || reason == "error" else { continue }
+                onPlaybackEnded?()
             default:
                 break
             }
@@ -147,6 +171,48 @@ final class MPVIPCClient {
         var payload = data
         payload.append(0x0a)
         fileHandle.write(payload)
+    }
+
+    /// Pide a mpv cargar `url`, reemplazando lo que esté cargado ahora mismo
+    /// (`replace`, garantiza que solo hay un vídeo/audio reproduciéndose a
+    /// la vez, igual que antes hacía terminar el proceso anterior).
+    /// `optionsString` son opciones por-archivo (formato `clave=valor,...`,
+    /// ver `VideoQuality.loadFileOptions`): mpv las revierte a su valor
+    /// previo en cuanto el archivo se descarga, así que no dejan efecto
+    /// "pegado" en la carga siguiente.
+    func loadFile(url: String, optionsString: String) {
+        var command: [Any] = ["loadfile", url, "replace"]
+        if !optionsString.isEmpty {
+            command.append(0)
+            command.append(optionsString)
+        }
+        send(command: command)
+    }
+
+    /// Rearma este cliente para un vídeo nuevo antes de pedir su carga (ver
+    /// `MPVLauncher.deliver`): resetea el estado "por vídeo" — si no,
+    /// `onPlaybackReady` solo dispararía una vez en toda la sesión en vez de
+    /// una vez por vídeo, y `onPlaybackReady`/`onMediaTitleChanged` podrían
+    /// entregar el título del vídeo anterior — y reasigna todos los
+    /// callbacks a los del nuevo pedido.
+    func prepareForNewLoad(
+        onPauseChanged: ((Bool) -> Void)?,
+        onMediaTitleChanged: ((String) -> Void)?,
+        onPlaybackReady: ((String) -> Void)?,
+        onTimePositionChanged: ((Double) -> Void)?,
+        onDurationChanged: ((Double) -> Void)?,
+        onAudioLevelsChanged: ((Double, Double) -> Void)?,
+        onPlaybackEnded: (() -> Void)?
+    ) {
+        hasNotifiedPlaybackReady = false
+        latestMediaTitle = nil
+        self.onPauseChanged = onPauseChanged
+        self.onMediaTitleChanged = onMediaTitleChanged
+        self.onPlaybackReady = onPlaybackReady
+        self.onTimePositionChanged = onTimePositionChanged
+        self.onDurationChanged = onDurationChanged
+        self.onAudioLevelsChanged = onAudioLevelsChanged
+        self.onPlaybackEnded = onPlaybackEnded
     }
 
     func observePauseProperty() {

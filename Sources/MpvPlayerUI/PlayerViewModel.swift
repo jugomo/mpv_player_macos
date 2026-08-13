@@ -557,7 +557,7 @@ final class PlayerViewModel: ObservableObject {
     /// `terminationHandler` que ya maneja el cierre manual de la ventana de
     /// mpv o el fin natural de la reproducción.
     func stop() {
-        MPVLauncher.terminateAllRunningProcesses()
+        MPVLauncher.terminateSession()
     }
 
     /// Action for the header's primary play/pause button: toggles pause if

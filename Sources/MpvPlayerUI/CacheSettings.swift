@@ -67,13 +67,12 @@ final class CacheSettingsManager: ObservableObject {
     }
 
     /// Segundos efectivos según el modo activo: el del slider en `.off`, o
-    /// el valor fijo del preset en los otros dos.
+    /// el valor fijo del preset en los otros dos. Reaplicado por
+    /// `set_property demuxer-readahead-secs` en cada vídeo (ver
+    /// `MPVLauncher.applySessionSettings`), ya que el proceso mpv se
+    /// reutiliza entre reproducciones en vez de relanzarse con esto como
+    /// flag de arranque.
     var effectiveDurationSeconds: Double {
         mode.presetSeconds ?? customDurationSeconds
-    }
-
-    /// Flags de mpv para aplicar la duración de caché elegida.
-    var mpvArguments: [String] {
-        ["--demuxer-readahead-secs=\(Int(effectiveDurationSeconds))"]
     }
 }
