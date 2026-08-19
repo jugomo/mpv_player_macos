@@ -55,6 +55,12 @@ struct AboutView: View {
                     url: "https://github.com/yt-dlp/yt-dlp"
                 )
 
+                CreditRow(
+                    name: "bgutil-ytdlp-pot-provider",
+                    description: loc.t(.creditsBgutilDescription),
+                    url: "https://github.com/Brainicism/bgutil-ytdlp-pot-provider"
+                )
+
                 Text(loc.t(.creditsDisclaimer))
                     .font(.caption2)
                     .foregroundStyle(.secondary)

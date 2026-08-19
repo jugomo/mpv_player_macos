@@ -54,34 +54,43 @@ enum VideoQuality: String, CaseIterable, Identifiable, Codable {
     /// otras en una única propiedad `script-opts`, que en mpv no se acumula
     /// si se reaplica: la última reemplaza a las anteriores).
     var scriptOpts: [String: String] {
-        if self == .audioOnly {
-            return [
-                // Por defecto el OSC se oculta hasta mover el ratón; en modo
-                // solo audio no hay vídeo bajo el que "esconderse", así que
-                // lo dejamos siempre visible.
-                "osc-visibility": "always",
-                // Sin vídeo la ventana es pequeña y los controles por
-                // defecto (escala 1x) quedan diminutos; los agrandamos para
-                // que se vean e interactúen bien.
-                "osc-scalewindowed": "10.0",
-            ]
-        }
-        return [
-            // Botón custom del OSC (soportado nativamente por mpv en los
-            // layouts bottombar/topbar, el default) para fijar la ventana de
-            // vídeo por encima de las demás sin salir de mpv. Sin sentido en
-            // modo solo audio, donde no hay vídeo que "flote" sobre otras
-            // ventanas.
-            //
-            // El contenido del botón se renderiza con la fuente normal del
-            // OSD (no con la fuente de iconos propia de mpv), así que un
-            // emoji a color como 📌 no pinta nada (libass no soporta glifos
-            // bitmap/color): sale un cuadro vacío. "⬆" es un glifo vectorial
-            // normal, siempre disponible. El show-text da feedback inmediato
-            // ya que el botón no tiene tooltip.
+        // Botón custom del OSC (soportado nativamente por mpv en los layouts
+        // bottombar/topbar, el default) para fijar la ventana de vídeo por
+        // encima de las demás sin salir de mpv.
+        //
+        // Se manda SIEMPRE, sea cual sea la calidad — aunque en solo audio no
+        // tenga mucho sentido semántico (no hay vídeo que "flote" sobre otras
+        // ventanas) — y no solo para vídeo como antes: con el proceso mpv
+        // reutilizado entre reproducciones, si este script-opt entra y sale
+        // del valor de `script-opts` según la calidad, osc.lua reinicializa
+        // sus elementos pero no resetea su contador interno de "cuántos
+        // custom buttons hay" (bug de osc.lua, no nuestro), y la siguiente
+        // vez que sí hay vídeo intenta añadir el layout de un botón que cree
+        // que existe pero no llegó a registrar en esa pasada, crasheando con
+        // "Can't add_layout to element 'custom_button_1', doesn't exist.".
+        // Mantenerlo siempre presente evita disparar ese bug.
+        //
+        // El contenido del botón se renderiza con la fuente normal del OSD
+        // (no con la fuente de iconos propia de mpv), así que un emoji a
+        // color como 📌 no pinta nada (libass no soporta glifos
+        // bitmap/color): sale un cuadro vacío. "⬆" es un glifo vectorial
+        // normal, siempre disponible. El show-text da feedback inmediato ya
+        // que el botón no tiene tooltip.
+        var opts: [String: String] = [
             "osc-custom_button_1_content": "⬆",
             "osc-custom_button_1_mbtn_left_command": "cycle ontop; show-text \"On top: ${ontop}\"",
         ]
+        if self == .audioOnly {
+            // Por defecto el OSC se oculta hasta mover el ratón; en modo
+            // solo audio no hay vídeo bajo el que "esconderse", así que lo
+            // dejamos siempre visible.
+            opts["osc-visibility"] = "always"
+            // Sin vídeo la ventana es pequeña y los controles por defecto
+            // (escala 1x) quedan diminutos; los agrandamos para que se vean
+            // e interactúen bien.
+            opts["osc-scalewindowed"] = "10.0"
+        }
+        return opts
     }
 
     /// Opciones por-archivo para cargar esta calidad vía `loadfile` (ver
@@ -163,13 +172,53 @@ enum MPVLauncher {
         case launching(Process)
         case ready(Process, MPVIPCClient)
     }
-    private static var sessionState: SessionState = .idle
 
-    /// El último `play()` pedido mientras la sesión todavía se estaba
-    /// lanzando/conectando: cubre pulsar "siguiente" varias veces seguidas
-    /// antes de que el primer arranque termine, entregando solo el último
-    /// pedido en vez de lanzar un proceso por cada click.
-    private static var pendingRequest: LoadRequest?
+    /// Estado mutable de una sesión mpv reutilizable. mpv no permite crear
+    /// nunca su ventana y luego "deshacerlo": una vez lanzado con
+    /// `--force-window=yes` (o con una pista de vídeo real), la ventana
+    /// existe durante toda la vida del proceso. Por eso hay dos sesiones
+    /// independientes en vez de una — ver `windowedSession`/`windowlessSession`
+    /// más abajo — y no una sola con un flag "con/sin ventana" reaplicable
+    /// por vídeo como el resto de ajustes.
+    private final class Session {
+        var state: SessionState = .idle
+        /// El último `play()` pedido mientras esta sesión todavía se estaba
+        /// lanzando/conectando: cubre pulsar "siguiente" varias veces
+        /// seguidas antes de que el primer arranque termine, entregando solo
+        /// el último pedido en vez de lanzar un proceso por cada click.
+        var pendingRequest: LoadRequest?
+        /// El `FileHandle` del log de esta sesión, si está en marcha (ver
+        /// `launchSession`/`logFileURL`). Se conserva para poder truncar el
+        /// log en el sitio (ver `clearLogFile`) sin romper la escritura de
+        /// mpv: el proceso hijo recibe su stdout/stderr vía `dup2` de este
+        /// mismo descriptor, así que comparte con él la posición de
+        /// escritura en el archivo (offset), no solo la ruta.
+        var logHandle: FileHandle?
+    }
+
+    /// Sesión con `--force-window=yes`: la de toda la vida, usada siempre
+    /// salvo que el ajuste "sin ventana separada para solo audio" (ver
+    /// `PlaybackWindowSettingsManager.hideWindowForAudioOnly`) esté activo Y
+    /// la calidad pedida sea "Solo audio".
+    private static let windowedSession = Session()
+    /// Sesión SIN `--force-window` en absoluto: sin pista de vídeo (siempre
+    /// "Solo audio"), mpv no crea ninguna ventana por su cuenta, y los
+    /// controles de esta app (que ya hablan con mpv por IPC, ver
+    /// `PlayerView`/`PlayerViewModel`) bastan para controlar la reproducción.
+    /// Solo se usa cuando el ajuste anterior está activo.
+    private static let windowlessSession = Session()
+
+    /// Solo puede haber una reproducción real a la vez: al entregar a una de
+    /// las dos sesiones, se termina la otra si estuviera en marcha (p.ej. el
+    /// usuario tenía un vídeo con ventana y pide un "Solo audio" sin
+    /// ventana, o viceversa) en vez de dejar dos procesos mpv vivos en
+    /// paralelo.
+    private static func session(for quality: VideoQuality) -> (target: Session, other: Session, needsWindow: Bool) {
+        let needsWindow = quality != .audioOnly || !PlaybackWindowSettingsManager.shared.hideWindowForAudioOnly
+        return needsWindow
+            ? (windowedSession, windowlessSession, true)
+            : (windowlessSession, windowedSession, false)
+    }
 
     static func play(
         urlString: String,
@@ -207,42 +256,46 @@ enum MPVLauncher {
             onAudioLevelsChanged: { onAudioLevelsChanged?($0, $1) }
         )
 
+        let (target, other, needsWindow) = session(for: quality)
+        terminate(other)
+
         sessionLock.lock()
-        let snapshot = sessionState
+        let snapshot = target.state
         sessionLock.unlock()
 
         switch snapshot {
         case .ready(let process, let client) where process.isRunning:
             // Camino caliente: la sesión ya está en marcha, no hace falta
             // volver a lanzar ni firmar nada, solo pedirle el vídeo nuevo.
-            deliver(client: client, request: request)
+            deliver(client: client, request: request, needsWindow: needsWindow)
         case .launching:
             // Ya hay un arranque en curso (p.ej. este es el segundo/tercer
             // "siguiente" pulsado antes de que el primero termine de
             // conectar): que se quede con el último pedido en vez de lanzar
             // un segundo proceso.
             sessionLock.lock()
-            pendingRequest = request
+            target.pendingRequest = request
             sessionLock.unlock()
         case .idle, .ready:
             // `.ready` con proceso ya no vivo: defensivo, no debería darse
             // en la práctica (la muerte del proceso siempre pasa primero por
-            // `terminateSession()` o por su `terminationHandler`, que dejan
-            // el estado en `.idle`), pero por si la comprobación de
+            // `terminate()` o por su `terminationHandler`, que dejan el
+            // estado en `.idle`), pero por si la comprobación de
             // `isRunning` llega justo antes de que esos se ejecuten.
             sessionLock.lock()
-            pendingRequest = request
+            target.pendingRequest = request
             sessionLock.unlock()
-            try launchSession(mpvPath: mpvPath)
+            try launchSession(session: target, mpvPath: mpvPath, needsWindow: needsWindow)
         }
     }
 
-    /// Lanza el proceso mpv de la sesión, en frío y sin ningún vídeo
-    /// cargado (`--idle=yes`, sin URL como argumento): cada vídeo —incluido
-    /// el primero— se entrega después vía IPC (`deliver`/`loadFile`), nunca
-    /// como argumento de arranque, para que el mismo código sirva tanto para
-    /// el primer vídeo de la sesión como para todos los siguientes.
-    private static func launchSession(mpvPath: String) throws {
+    /// Lanza el proceso mpv de la sesión indicada, en frío y sin ningún
+    /// vídeo cargado (`--idle=yes`, sin URL como argumento): cada vídeo
+    /// —incluido el primero— se entrega después vía IPC (`deliver`/
+    /// `loadFile`), nunca como argumento de arranque, para que el mismo
+    /// código sirva tanto para el primer vídeo de la sesión como para todos
+    /// los siguientes.
+    private static func launchSession(session: Session, mpvPath: String, needsWindow: Bool) throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: mpvPath)
 
@@ -273,15 +326,60 @@ enum MPVLauncher {
             // por IPC en vez de tener que relanzar el proceso entero.
             "--idle=yes",
             "--keep-open=no",
-            // Fijo toda la sesión: con el proceso reutilizado entre vídeos
-            // no hay forma de "no crear nunca la ventana" para el modo solo
-            // audio (eso solo funcionaba porque antes cada reproducción
-            // solo-audio era un proceso nuevo y sin --force-window). Ahora
-            // ese modo minimiza la ventana existente por IPC en vez de
-            // evitar crearla (ver `deliver`).
-            "--force-window=yes",
-        ] + (PlaybackWindowSettingsManager.shared.alwaysOnTop ? ["--ontop"] : [])
-        process.arguments = args
+            // Los servidores de YouTube (googlevideo) rechazan con 403 la
+            // petición HTTP inicial que hace ffmpeg al abrir el stream: por
+            // defecto pide un rango abierto ("Range: bytes=0-", sin límite
+            // superior, para averiguar el tamaño del archivo), y a partir de
+            // ~1MB de rango solicitado de golpe esos servidores lo tratan
+            // como descarga masiva y lo bloquean — un `curl` con la MISMA URL
+            // pero pidiendo un rango acotado (p.ej. los primeros 512KB)
+            // funciona sin problema. Sin este flag, algunos vídeos/formatos
+            // (viene siendo sobre todo audio-only vía el cliente ANDROID_VR,
+            // que yt-dlp usa a menudo por no requerir "PO Token") fallan
+            // *siempre* al reproducir con "HTTP error 403 Forbidden" /
+            // "No video or audio streams selected", sin que yt-dlp/mpv
+            // reintenten con otro rango: es un fallo al abrir el archivo, no
+            // uno a mitad de descarga. `initial_request_size` (opción del
+            // protocolo https de ffmpeg) fuerza a pedir un rango acotado en
+            // esa primera petición.
+            //
+            // A propósito NO se toca también `request_size` (que acotaría
+            // TODAS las peticiones, no solo la primera): probado en real,
+            // corrompe el stream en el límite de cada trozo ("Invalid OBU
+            // length"/"Packet corrupt" en vídeo AV1) — el chunking de ffmpeg
+            // en peticiones intermedias no reensambla bien con esta
+            // combinación demuxer/codec.
+            //
+            // El resto de opciones son una red de seguridad para cuando un
+            // vídeo/formato concreto queda bloqueado más allá de la primera
+            // petición (probado en real con un vídeo al que YouTube le negó
+            // sistemáticamente TODA petición después de la primera, tras
+            // acumular muchísimas peticiones de prueba en poco tiempo): sin
+            // ellas, mpv se quedaba colgado en silencio para siempre
+            // (`--network-timeout`, pensado para la conexión inicial, no
+            // libera una lectura ya en curso que deja de recibir datos).
+            // `timeout` (microsegundos) acota esa lectura; `reconnect*`
+            // fuerza el reintento explícito (con backoff) en vez de
+            // confiar en que mpv ya lo haga por su cuenta. Si los
+            // reintentos se agotan, el archivo simplemente termina
+            // (`onPlaybackEnded`) en vez de dejar la sesión encallada sin
+            // que ningún control — ni los de esta app ni los de la propia
+            // ventana de mpv — tengan ya nada real que pausar/reanudar.
+            "--stream-lavf-o=initial_request_size=262144,timeout=15000000,reconnect=1,reconnect_streamed=1,reconnect_on_network_error=1,reconnect_on_http_error=403",
+        ]
+        // Fijo para toda la vida del proceso: mpv no tiene ningún flag
+        // "--no-window" (falla con "option not found" en 0.41), así que la
+        // única forma de que nunca exista ventana es no forzarla —y no
+        // haber pista de vídeo, garantizado porque `windowlessSession` solo
+        // recibe pedidos de calidad "Solo audio" (ver `session(for:)`).
+        // `windowedSession` sí la fuerza siempre, incluida para "Solo audio"
+        // cuando el ajuste está desactivado (comportamiento de toda la
+        // vida): la minimiza/desminimiza por IPC según haga falta en
+        // `deliver`, ya que no puede evitar que exista una vez arrancada.
+        let windowArgs = needsWindow
+            ? ["--force-window=yes"] + (PlaybackWindowSettingsManager.shared.alwaysOnTop ? ["--ontop"] : [])
+            : []
+        process.arguments = args + windowArgs
 
         var environment = ProcessInfo.processInfo.environment
         let homebrewBinDirs = ["/opt/homebrew/bin", "/usr/local/bin"]
@@ -294,6 +392,9 @@ enum MPVLauncher {
             handle.seekToEndOfFile()
             process.standardOutput = handle
             process.standardError = handle
+            sessionLock.lock()
+            session.logHandle = handle
+            sessionLock.unlock()
         } else {
             process.standardOutput = FileHandle.nullDevice
             process.standardError = FileHandle.nullDevice
@@ -303,20 +404,21 @@ enum MPVLauncher {
             sessionLock.lock()
             var endedCallback: (() -> Void)?
             var clientToClose: MPVIPCClient?
-            switch sessionState {
+            switch session.state {
             case .ready(let process, let client) where process === finishedProcess:
-                sessionState = .idle
+                session.state = .idle
+                session.logHandle = nil
                 endedCallback = client.onPlaybackEnded
                 clientToClose = client
             case .launching(let process) where process === finishedProcess:
-                sessionState = .idle
-                endedCallback = pendingRequest?.onPlaybackEnded
-                pendingRequest = nil
+                session.state = .idle
+                session.logHandle = nil
+                endedCallback = session.pendingRequest?.onPlaybackEnded
+                session.pendingRequest = nil
             default:
-                // Ya superado por `terminateSession()` (que ya dejó el
-                // estado en `.idle` y disparó su propio aviso) o por una
-                // sesión más nueva: no hay nada que limpiar ni que avisar
-                // dos veces.
+                // Ya superado por `terminate()` (que ya dejó el estado en
+                // `.idle` y disparó su propio aviso) o por una sesión más
+                // nueva: no hay nada que limpiar ni que avisar dos veces.
                 break
             }
             sessionLock.unlock()
@@ -333,15 +435,21 @@ enum MPVLauncher {
         }
 
         sessionLock.lock()
-        sessionState = .launching(process)
+        session.state = .launching(process)
         sessionLock.unlock()
 
-        connectIPC(process: process, socketPath: socketPath)
+        connectIPC(session: session, process: process, socketPath: socketPath, needsWindow: needsWindow)
     }
 
     /// mpv crea el socket del IPC server un instante después de arrancar, no
     /// al momento: se reintenta con backoff corto hasta que exista.
-    private static func connectIPC(process: Process, socketPath: String, attempt: Int = 0) {
+    private static func connectIPC(
+        session: Session,
+        process: Process,
+        socketPath: String,
+        needsWindow: Bool,
+        attempt: Int = 0
+    ) {
         if let client = MPVIPCClient(socketPath: socketPath) {
             client.observePauseProperty()
             client.observeMediaTitleProperty()
@@ -350,25 +458,25 @@ enum MPVLauncher {
             client.observeAudioLevelsProperty()
 
             sessionLock.lock()
-            // Defensivo: si `terminateSession()` corrió mientras se conectaba
-            // (el usuario pulsó Stop durante el arranque), no resucitar la
+            // Defensivo: si `terminate()` corrió mientras se conectaba (el
+            // usuario pulsó Stop durante el arranque), no resucitar la
             // sesión que ya se dio por terminada.
-            guard case .launching(let launchingProcess) = sessionState, launchingProcess === process else {
+            guard case .launching(let launchingProcess) = session.state, launchingProcess === process else {
                 sessionLock.unlock()
                 client.close()
                 return
             }
-            sessionState = .ready(process, client)
-            let request = pendingRequest
-            pendingRequest = nil
+            session.state = .ready(process, client)
+            let request = session.pendingRequest
+            session.pendingRequest = nil
             sessionLock.unlock()
 
             if let request {
-                deliver(client: client, request: request)
+                deliver(client: client, request: request, needsWindow: needsWindow)
             }
         } else if attempt < 30 {
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) {
-                connectIPC(process: process, socketPath: socketPath, attempt: attempt + 1)
+                connectIPC(session: session, process: process, socketPath: socketPath, needsWindow: needsWindow, attempt: attempt + 1)
             }
         }
     }
@@ -377,20 +485,22 @@ enum MPVLauncher {
     /// que hoy son "por vídeo" (volumen, escalado, caché, ontop, script-opts)
     /// vía `set_property`, rearma los callbacks del cliente IPC para este
     /// vídeo concreto, y por último pide la carga real con `loadfile`.
-    private static func deliver(client: MPVIPCClient, request: LoadRequest) {
+    private static func deliver(client: MPVIPCClient, request: LoadRequest, needsWindow: Bool) {
         applySessionSettings(client: client, request: request)
 
-        // Con el proceso (y su ventana) reutilizados entre vídeos, "Solo
-        // audio" ya no puede evitar que la ventana exista — se minimiza por
-        // IPC en su lugar. Cualquier otra calidad debe explícitamente
-        // desminimizarla, ya que pudo quedar minimizada por un "Solo audio"
-        // anterior en la misma sesión.
-        let shouldMinimize = request.quality == .audioOnly
+        // Solo la sesión CON ventana necesita minimizarla/desminimizarla por
+        // IPC para "Solo audio" (no puede evitar que la ventana exista una
+        // vez arrancada con --force-window, ver `launchSession`); la sesión
+        // sin ventana nunca llega a crear ninguna, así que no hay nada que
+        // minimizar.
+        let shouldMinimize = needsWindow && request.quality == .audioOnly
         client.prepareForNewLoad(
             onPauseChanged: request.onPauseChanged,
             onMediaTitleChanged: request.onTitleResolved,
             onPlaybackReady: { title in
-                client.send(command: ["set_property", "window-minimized", shouldMinimize])
+                if needsWindow {
+                    client.send(command: ["set_property", "window-minimized", shouldMinimize])
+                }
                 request.onPlaybackReady(title)
             },
             onTimePositionChanged: request.onTimePositionChanged,
@@ -475,23 +585,37 @@ enum MPVLauncher {
         currentClient()?.send(command: ["set_property", "volume", volume])
     }
 
+    /// Devuelve el cliente IPC de la sesión que esté realmente en marcha.
+    /// Como `play()` siempre termina la otra sesión antes de entregar a esta
+    /// (ver `session(for:)`), como mucho una de las dos está lista a la vez.
     private static func currentClient() -> MPVIPCClient? {
         sessionLock.lock()
         defer { sessionLock.unlock() }
-        if case .ready(_, let client) = sessionState { return client }
+        if case .ready(_, let client) = windowedSession.state { return client }
+        if case .ready(_, let client) = windowlessSession.state { return client }
         return nil
     }
 
     /// Termina la sesión mpv en marcha, si hay alguna (parada manual del
     /// usuario o cierre de la app) — la única forma de matar el proceso de
     /// verdad; el resto de reproducciones ya no lo hacen, reutilizan la
-    /// sesión existente vía `deliver`.
+    /// sesión existente vía `deliver`. Actúa sobre ambas (con y sin
+    /// ventana): normalmente solo una está en marcha, pero es inocuo llamarlo
+    /// también sobre la que ya está `.idle`.
     static func terminateSession() {
+        terminate(windowedSession)
+        terminate(windowlessSession)
+    }
+
+    /// Termina una sesión concreta, si está en marcha. No hace nada si ya
+    /// estaba `.idle`.
+    private static func terminate(_ session: Session) {
         sessionLock.lock()
-        let previousState = sessionState
-        sessionState = .idle
-        let pending = pendingRequest
-        pendingRequest = nil
+        let previousState = session.state
+        session.state = .idle
+        session.logHandle = nil
+        let pending = session.pendingRequest
+        session.pendingRequest = nil
         sessionLock.unlock()
 
         let process: Process?
@@ -521,7 +645,35 @@ enum MPVLauncher {
         }
     }
 
-    private static func logFileURL() -> URL {
+    /// Vacía el archivo de log en el sitio (mismo inodo) en vez de
+    /// sustituirlo por uno nuevo (p.ej. escribir con `.atomic`, que hace un
+    /// rename por debajo): si hay una sesión mpv en marcha, su stdout/stderr
+    /// son descriptores duplicados (`dup2`) del `FileHandle` que la app
+    /// mantiene abierto, así que comparten con él la posición de escritura
+    /// en el archivo. Reemplazar el archivo deja ese descriptor de mpv
+    /// apuntando a un inodo huérfano: sigue "escribiendo" ahí sin error,
+    /// pero ya invisible bajo esa ruta — el log deja de crecer para el
+    /// resto de la sesión (ver LogViewerView). Truncando el mismo handle que
+    /// mpv usa en vez de reemplazar el archivo, todo sigue apuntando al
+    /// mismo sitio y la escritura continúa con normalidad.
+    static func clearLogFile() throws {
+        sessionLock.lock()
+        let activeHandle = windowedSession.logHandle ?? windowlessSession.logHandle
+        sessionLock.unlock()
+
+        if let activeHandle {
+            activeHandle.truncateFile(atOffset: 0)
+            return
+        }
+        let url = logFileURL()
+        guard let handle = FileHandle(forWritingAtPath: url.path) else {
+            throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path])
+        }
+        defer { try? handle.close() }
+        handle.truncateFile(atOffset: 0)
+    }
+
+    static func logFileURL() -> URL {
         let dir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Logs/MpvPlayerUI", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

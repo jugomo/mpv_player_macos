@@ -2,17 +2,26 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject private var loc = LocalizationManager.shared
+
+    var body: some View {
+        TabView {
+            GeneralSettingsView()
+                .tabItem { Text(loc.t(.generalTab)) }
+            LogViewerView()
+                .tabItem { Text(loc.t(.logViewerTab)) }
+        }
+        .frame(width: 480, height: 540)
+    }
+}
+
+private struct GeneralSettingsView: View {
+    @ObservedObject private var loc = LocalizationManager.shared
     @ObservedObject private var cache = CacheSettingsManager.shared
     @ObservedObject private var render = RenderSettingsManager.shared
     @ObservedObject private var playbackWindow = PlaybackWindowSettingsManager.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text(loc.t(.settings))
-                .font(.headline)
-
-            Divider()
-
             VStack(alignment: .leading, spacing: 6) {
                 Text(loc.t(.language))
                     .font(.subheadline)
@@ -96,6 +105,5 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(20)
-        .frame(width: 480, height: 510)
     }
 }

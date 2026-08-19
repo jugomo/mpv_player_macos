@@ -26,6 +26,7 @@ enum LKey {
     case openTerminalToInstallHomebrew, installWithHomebrew
     case aboutCredit, helpSectionTitle, helpBody
     case creditsSectionTitle, creditsMpvDescription, creditsYtdlpDescription, creditsDisclaimer
+    case creditsBgutilDescription
     case playlistTitle, importEllipsis, exportEllipsis, noVideosYet
     case doubleClickToPlay, qualityTooltip, copyUrlTooltip, removeFromPlaylistTooltip
     case exportFailedPrefix, importFailedPrefix
@@ -41,6 +42,11 @@ enum LKey {
     case showDescriptionTooltip
     case dockPlaylistTooltip, undockPlaylistTooltip
     case showPlaylistTooltip, hidePlaylistTooltip
+    case generalTab, logViewerTab
+    case reloadButton, exportButton, clearButton
+    case emptyLogMessage, clearLogConfirmTitle, clearLogConfirmMessage, cancel
+    case exportLogFailedPrefix, clearLogFailedPrefix
+    case logTruncatedNoteFormat
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -126,6 +132,11 @@ final class LocalizationManager: ObservableObject {
             "Herramienta de línea de comandos de código abierto usada para descargar y extraer los vídeos de YouTube.",
             "Open-source command-line tool used to download and extract YouTube videos."
         ),
+        .creditsBgutilDescription: (
+            "Genera el token que YouTube exige cada vez más antes de servir el vídeo/audio, mitigando (sin garantizarlo del todo) los errores HTTP 403 al reproducir.",
+            "Generates the token YouTube increasingly requires before serving video/audio, mitigating (without fully guaranteeing) HTTP 403 errors during playback."
+        ),
+
         .creditsDisclaimer: (
             "Proyecto personal sin afiliación con YouTube ni Google. Usa bajo tu propio riesgo, no se ofrece ayuda o soporte.",
             "Personal project, not affiliated with YouTube or Google. Use at your own risk, no help or support is provided."
@@ -190,5 +201,24 @@ final class LocalizationManager: ObservableObject {
         .undockPlaylistTooltip: ("Desacoplar a ventana flotante", "Undock to a floating window"),
         .showPlaylistTooltip: ("Mostrar playlist", "Show playlist"),
         .hidePlaylistTooltip: ("Ocultar playlist", "Hide playlist"),
+
+        .generalTab: ("General", "General"),
+        .logViewerTab: ("Registro", "Log Viewer"),
+        .reloadButton: ("Recargar", "Reload"),
+        .exportButton: ("Exportar…", "Export…"),
+        .clearButton: ("Borrar", "Clear"),
+        .emptyLogMessage: ("El archivo de registro está vacío.", "The log file is empty."),
+        .clearLogConfirmTitle: ("¿Borrar el registro?", "Clear the log?"),
+        .clearLogConfirmMessage: (
+            "Esta acción vaciará el archivo de registro de forma permanente.",
+            "This will permanently empty the log file."
+        ),
+        .cancel: ("Cancelar", "Cancel"),
+        .exportLogFailedPrefix: ("No se pudo exportar el registro: ", "Could not export the log: "),
+        .clearLogFailedPrefix: ("No se pudo borrar el registro: ", "Could not clear the log: "),
+        .logTruncatedNoteFormat: (
+            "Mostrando los últimos %@ de %@ en total. Usa Exportar para guardar el archivo completo.",
+            "Showing the last %@ of %@ total. Use Export to save the whole file."
+        ),
     ]
 }

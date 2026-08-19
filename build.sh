@@ -119,8 +119,100 @@ if [ ! -x "${BUNDLE}/Contents/Resources/bin/yt-dlp" ]; then
     cp "$YTDLP_CACHE" "${BUNDLE}/Contents/Resources/bin/yt-dlp"
 fi
 
+# YouTube exige cada vez más un "PO Token" antes de servir el vídeo/audio, o
+# responde 403 incluso con una URL recién extraída (ver POTProviderLauncher).
+# bgutil-ytdlp-pot-provider genera ese token: un plugin de yt-dlp que habla
+# por HTTP con un servidor local, ejecutado aquí con un runtime Deno
+# vendorizado (evita depender de Node/Homebrew en la máquina final). No hay
+# binario precompilado del servidor, así que se compila/instala una vez en
+# esta máquina y se cachea en .build/vendor/ (bórralo para forzar una
+# actualización); su ausencia no es fatal, solo se pierde esta mitigación de
+# los 403 (ver DependencyChecker/POTProviderLauncher, que lo tratan como
+# opcional).
+BGUTIL_VERSION="1.3.1"
+
+case "$(uname -m)" in
+    arm64)   DENO_ASSET="deno-aarch64-apple-darwin.zip" ;;
+    x86_64)  DENO_ASSET="deno-x86_64-apple-darwin.zip" ;;
+    *)       DENO_ASSET="" ;;
+esac
+
+if [ ! -x "${BUNDLE}/Contents/Resources/bin/deno" ] && [ -n "$DENO_ASSET" ]; then
+    echo "==> Vendorizando Deno (runtime del proveedor de PO Token)…"
+    DENO_CACHE=".build/vendor/${DENO_ASSET}"
+    if [ ! -f "$DENO_CACHE" ]; then
+        mkdir -p "$(dirname "$DENO_CACHE")"
+        curl -fL --progress-bar -o "$DENO_CACHE" \
+            "https://github.com/denoland/deno/releases/latest/download/${DENO_ASSET}"
+    else
+        echo "    (usando copia en caché: ${DENO_CACHE}; bórrala para forzar una actualización)"
+    fi
+    mkdir -p "${BUNDLE}/Contents/Resources/bin"
+    unzip -q -o "$DENO_CACHE" -d "${BUNDLE}/Contents/Resources/bin"
+    chmod +x "${BUNDLE}/Contents/Resources/bin/deno"
+    xattr -d com.apple.quarantine "${BUNDLE}/Contents/Resources/bin/deno" 2>/dev/null || true
+fi
+DENO_BIN="$(pwd)/${BUNDLE}/Contents/Resources/bin/deno"
+
+BGUTIL_SRC_CACHE=".build/vendor/bgutil-ytdlp-pot-provider"
+if [ ! -d "$BGUTIL_SRC_CACHE" ]; then
+    echo "==> Descargando bgutil-ytdlp-pot-provider ${BGUTIL_VERSION}…"
+    git clone --quiet --single-branch --branch "$BGUTIL_VERSION" \
+        https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "$BGUTIL_SRC_CACHE"
+    # Sin esto `deno install` también instala las devDependencies del
+    # proyecto (typescript, eslint, prettier…, ~80MB de más): no hacen falta
+    # para nada en tiempo de ejecución, solo para desarrollarlo. Se borra
+    # también el lockfile de npm, que si no `deno install` lo prioriza sobre
+    # package.json y las reinstala igualmente.
+    python3 -c "
+import json
+path = '${BGUTIL_SRC_CACHE}/server/package.json'
+with open(path) as f:
+    pkg = json.load(f)
+pkg.pop('devDependencies', None)
+pkg.pop('scripts', None)
+with open(path, 'w') as f:
+    json.dump(pkg, f, indent=2)
+"
+    rm -f "${BGUTIL_SRC_CACHE}/server/deno.lock" "${BGUTIL_SRC_CACHE}/server/package-lock.json"
+fi
+if [ ! -d "${BGUTIL_SRC_CACHE}/server/node_modules" ] && [ -x "$DENO_BIN" ]; then
+    echo "==> Instalando dependencias del proveedor de PO Token (deno install, puede tardar)…"
+    ( cd "${BGUTIL_SRC_CACHE}/server" && "$DENO_BIN" install --allow-scripts=npm:canvas )
+fi
+if [ -d "${BGUTIL_SRC_CACHE}/server/node_modules" ]; then
+    rm -rf "${BUNDLE}/Contents/Resources/bgutil-provider"
+    mkdir -p "${BUNDLE}/Contents/Resources/bgutil-provider"
+    cp -R "${BGUTIL_SRC_CACHE}/server/src" "${BUNDLE}/Contents/Resources/bgutil-provider/"
+    cp -R "${BGUTIL_SRC_CACHE}/server/node_modules" "${BUNDLE}/Contents/Resources/bgutil-provider/"
+    # Deno resuelve los imports npm (p.ej. "express") contra el package.json
+    # más cercano subiendo desde el script de entrada, no solo contra
+    # node_modules/: sin esto falla con "Import 'express' not a dependency".
+    cp "${BGUTIL_SRC_CACHE}/server/package.json" "${BUNDLE}/Contents/Resources/bgutil-provider/"
+fi
+
+BGUTIL_PLUGIN_CACHE=".build/vendor/bgutil-ytdlp-pot-provider-plugin.zip"
+if [ ! -f "$BGUTIL_PLUGIN_CACHE" ]; then
+    echo "==> Descargando el plugin de yt-dlp para bgutil-ytdlp-pot-provider…"
+    mkdir -p "$(dirname "$BGUTIL_PLUGIN_CACHE")"
+    curl -fL --progress-bar -o "$BGUTIL_PLUGIN_CACHE" \
+        "https://github.com/Brainicism/bgutil-ytdlp-pot-provider/releases/latest/download/bgutil-ytdlp-pot-provider.zip"
+fi
+# yt-dlp busca plugins en <ruta-del-ejecutable>/yt-dlp-plugins/<nombre-paquete>/yt_dlp_plugins/…
+PLUGIN_DEST="${BUNDLE}/Contents/Resources/bin/yt-dlp-plugins/bgutil-ytdlp-pot-provider"
+rm -rf "$PLUGIN_DEST"
+mkdir -p "$PLUGIN_DEST"
+unzip -q -o "$BGUTIL_PLUGIN_CACHE" -d "$PLUGIN_DEST"
+
 echo "==> Firmando ad-hoc…"
 codesign --force --sign - "${BUNDLE}/Contents/Resources/bin/yt-dlp"
+if [ -x "${BUNDLE}/Contents/Resources/bin/deno" ]; then
+    codesign --force --sign - "${BUNDLE}/Contents/Resources/bin/deno"
+fi
+if [ -d "${BUNDLE}/Contents/Resources/bgutil-provider" ]; then
+    find "${BUNDLE}/Contents/Resources/bgutil-provider" -type f \( -name "*.node" -o -name "*.dylib" \) \
+        -exec codesign --force --sign - {} \;
+fi
 codesign --force --deep --sign - "$BUNDLE"
 
 echo "==> Listo: $(pwd)/${BUNDLE}"

@@ -43,6 +43,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var titleToastIsHovering = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // En segundo plano y sin bloquear el arranque: tarda ~1-2s en estar
+        // listo, así que conviene lanzarlo ya para que lo esté antes de que
+        // el usuario pulse Reproducir por primera vez (ver POTProviderLauncher).
+        POTProviderLauncher.start()
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv player UI")
@@ -648,6 +653,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         MPVLauncher.terminateSession()
+        POTProviderLauncher.stop()
     }
 
     private func togglePopover(_ sender: NSStatusBarButton) {
