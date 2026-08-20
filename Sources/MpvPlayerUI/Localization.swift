@@ -29,6 +29,7 @@ enum LKey {
     case creditsBgutilDescription
     case playlistTitle, importEllipsis, exportEllipsis, noVideosYet
     case doubleClickToPlay, qualityTooltip, copyUrlTooltip, removeFromPlaylistTooltip
+    case dragToReorderTooltip
     case exportFailedPrefix, importFailedPrefix
     case mpvNotInstalledError, installingPrefix, installationCompleted
     case homebrewNotInstalledErrorDescription
@@ -150,6 +151,7 @@ final class LocalizationManager: ObservableObject {
         .doubleClickToPlay: ("Doble clic para reproducir", "Double-click to play"),
         .qualityTooltip: ("Calidad al reproducir", "Quality when played"),
         .copyUrlTooltip: ("Copiar URL al portapapeles", "Copy URL to clipboard"),
+        .dragToReorderTooltip: ("Arrastra para reordenar", "Drag to reorder"),
         .removeFromPlaylistTooltip: ("Eliminar de la playlist", "Remove from playlist"),
         .exportFailedPrefix: ("No se pudo exportar la playlist: ", "Could not export the playlist: "),
         .importFailedPrefix: ("No se pudo importar la playlist: ", "Could not import the playlist: "),

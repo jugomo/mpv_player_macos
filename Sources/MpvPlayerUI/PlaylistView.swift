@@ -51,9 +51,15 @@ struct PlaylistView: View {
                 Spacer()
             } else {
                 List {
-                    ForEach(store.items) { item in
+                    ForEach(store.items) { (item: PlaylistItem) in
                         let isPlaying = item.id == viewModel.currentlyPlayingItemID
                         HStack(alignment: .top, spacing: 10) {
+                            Image(systemName: "line.3.horizontal")
+                                .foregroundStyle(.secondary)
+                                .font(.callout)
+                                .padding(.top, 4)
+                                .help(loc.t(.dragToReorderTooltip))
+
                             Button {
                                 viewModel.play(item: item)
                                 onItemPlayed?()
@@ -116,6 +122,9 @@ struct PlaylistView: View {
                         .padding(.horizontal, 4)
                         .background(isPlaying ? Color.accentColor.opacity(0.15) : Color.clear)
                         .cornerRadius(4)
+                    }
+                    .onMove { source, destination in
+                        store.move(fromOffsets: source, toOffset: destination)
                     }
                 }
                 .listStyle(.inset)
