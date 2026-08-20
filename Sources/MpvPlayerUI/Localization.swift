@@ -47,6 +47,7 @@ enum LKey {
     case emptyLogMessage, clearLogConfirmTitle, clearLogConfirmMessage, cancel
     case exportLogFailedPrefix, clearLogFailedPrefix
     case logTruncatedNoteFormat
+    case updateAvailableFormat, updateAvailableSeeRelease
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -220,5 +221,11 @@ final class LocalizationManager: ObservableObject {
             "Mostrando los últimos %@ de %@ en total. Usa Exportar para guardar el archivo completo.",
             "Showing the last %@ of %@ total. Use Export to save the whole file."
         ),
+
+        .updateAvailableFormat: (
+            "Hay una versión más reciente de %1$@: %3$@ (esta app trae %2$@). Vuelve a correr ./build.sh y reinstala para actualizarla.",
+            "A newer version of %1$@ is available: %3$@ (this app bundles %2$@). Re-run ./build.sh and reinstall to update it."
+        ),
+        .updateAvailableSeeRelease: ("Ver la versión más reciente", "See the latest release"),
     ]
 }

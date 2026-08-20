@@ -107,14 +107,41 @@ fi
 if [ ! -x "${BUNDLE}/Contents/Resources/bin/yt-dlp" ]; then
     echo "==> Vendorizando yt-dlp (binario standalone, sin dependencias de Python/Homebrew)…"
     YTDLP_CACHE=".build/vendor/yt-dlp_macos"
-    if [ ! -x "$YTDLP_CACHE" ]; then
+    YTDLP_CACHE_VERSION="${YTDLP_CACHE}.version"
+    # A diferencia de mpv/deno/bgutil (versionados a propósito, ver más
+    # abajo), yt-dlp SÍ debe ser siempre el más reciente posible en cada
+    # build: YouTube le cambia las reglas casi cada semana (ver historial de
+    # MPVLauncher.applySessionSettings — un yt-dlp de 6 semanas fue
+    # literalmente la causa de que la reproducción se cortara siempre a los
+    # pocos segundos). Antes esto se cacheaba sin fecha de caducidad y solo
+    # se refrescaba borrándolo a mano; ahora se compara contra la última
+    # release publicada en cada build y se vuelve a descargar si difiere.
+    # --retry: esta comprobación (y la descarga de abajo) se ha visto fallar
+    # por cortes de red intermitentes de pocos segundos, no por que la API/el
+    # release realmente no estén disponibles — reintentar en vez de rendirse
+    # al primer timeout evita tener que relanzar el build entero a mano.
+    LATEST_YTDLP_TAG="$(curl -fsSL -m 10 --retry 5 --retry-delay 3 --retry-all-errors \
+        https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest \
+        | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name",""))' 2>/dev/null || true)"
+    CACHED_YTDLP_TAG=""
+    [ -f "$YTDLP_CACHE_VERSION" ] && CACHED_YTDLP_TAG="$(cat "$YTDLP_CACHE_VERSION")"
+
+    if [ -n "$LATEST_YTDLP_TAG" ] && [ "$LATEST_YTDLP_TAG" != "$CACHED_YTDLP_TAG" ]; then
+        echo "    Descargando yt-dlp ${LATEST_YTDLP_TAG} (caché tenía: ${CACHED_YTDLP_TAG:-ninguna})…"
         mkdir -p "$(dirname "$YTDLP_CACHE")"
-        curl -fL --progress-bar -o "$YTDLP_CACHE" \
+        # -C - reanuda desde donde se cortó en vez de volver a empezar de
+        # cero en cada reintento (--retry por sí solo no lo hace).
+        curl -fL --progress-bar --connect-timeout 15 --retry 5 --retry-delay 3 \
+            --retry-all-errors -C - -o "$YTDLP_CACHE" \
             "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
         chmod +x "$YTDLP_CACHE"
         xattr -d com.apple.quarantine "$YTDLP_CACHE" 2>/dev/null || true
+        echo "$LATEST_YTDLP_TAG" > "$YTDLP_CACHE_VERSION"
+    elif [ -x "$YTDLP_CACHE" ]; then
+        echo "    (usando copia en caché ${CACHED_YTDLP_TAG:-(versión desconocida)}$( [ -z "$LATEST_YTDLP_TAG" ] && echo "; no se pudo consultar la última release, ¿sin red?" ))"
     else
-        echo "    (usando copia en caché: ${YTDLP_CACHE}; bórrala para forzar una actualización)"
+        echo "Error: no hay copia en caché de yt-dlp y no se pudo consultar/descargar la última release (¿sin red?)." >&2
+        exit 1
     fi
     cp "$YTDLP_CACHE" "${BUNDLE}/Contents/Resources/bin/yt-dlp"
 fi

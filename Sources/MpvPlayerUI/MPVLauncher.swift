@@ -46,7 +46,13 @@ enum VideoQuality: String, CaseIterable, Identifiable, Codable {
         case .q360:
             return "bestvideo[height<=360]+bestaudio/best[height<=360]"
         case .audioOnly:
-            return "bestaudio"
+            // "/18" es red de seguridad: si el cliente forzado en
+            // `player_client` (ver scriptOpts más abajo) no expusiera
+            // pistas de solo-audio, cae al mp4 360p clásico (itag 18,
+            // el más resistente a los bloqueos de PO Token), pequeño y
+            // suficiente ya que solo se usa el audio (`vid=no` en
+            // loadFileOptions descarta el vídeo al decodificar).
+            return "bestaudio/18"
         }
     }
 
@@ -521,6 +527,51 @@ enum MPVLauncher {
         client.send(command: ["set_property", "volume", Int(request.volume.rounded())])
         client.send(command: ["set_property", "ontop", PlaybackWindowSettingsManager.shared.alwaysOnTop])
         client.send(command: ["set_property", "demuxer-readahead-secs", Int(CacheSettingsManager.shared.effectiveDurationSeconds)])
+        // YouTube exige cada vez más un "PO Token" antes de servir el
+        // vídeo/audio; sin él, algunos formatos responden "HTTP error 403
+        // Forbidden" apenas empieza la descarga y mpv reintenta
+        // indefinidamente sin recuperarse nunca — lo que se percibe como
+        // que la reproducción "se corta" a los pocos segundos. El
+        // proveedor de PO Token vendorizado (bgutil, ver
+        // POTProviderLauncher) mitiga esto emitiendo el token que yt-dlp
+        // pida, para el cliente que sea.
+        //
+        // A diferencia de intentos anteriores aquí (ver historial de este
+        // archivo), NO forzamos un `player_client` fijo vía
+        // `extractor-args`: qué cliente concreto necesita el token (o
+        // directamente fuerza SABR y no sirve ni con token válido) es un
+        // objetivo móvil que cambió tres veces en 48h (android_vr →
+        // web_safari → roto de nuevo) según yt-dlp iba quedando
+        // desactualizado frente a los cambios de YouTube. La causa real de
+        // esos cortes no era el cliente elegido sino que el yt-dlp
+        // vendorizado llevaba semanas obsoleto (ver build.sh: se cachea en
+        // `.build/vendor/yt-dlp_macos` y no se refresca solo); un yt-dlp al
+        // día ya trae su propia lista de clientes/fallbacks mantenida por
+        // upstream —siempre más al día que cualquier cliente fijado a
+        // mano aquí—, así que dejamos que decida él. Si "corta a los
+        // pocos segundos" reaparece, sospechar primero de un yt-dlp
+        // desactualizado (`bin/yt-dlp --version` vs. la última release en
+        // GitHub) antes de volver a fijar un cliente.
+        //
+        // Es una opción nativa de mpv (`--ytdl-raw-options`), no un
+        // script-opt de ytdl_hook (a diferencia de "ytdl_path" un poco más
+        // abajo): el propio ytdl_hook.lua vendorizado la lee de
+        // `options/ytdl-raw-options`, no de su tabla interna de
+        // script-opts, así que iría como "unknown key" si se mandara junto
+        // al resto en `script-opts`.
+        //
+        // "sub-langs" va en el mismo raw_options: el propio ytdl_hook.lua
+        // vendorizado añade `--sub-langs all` por su cuenta (pidiendo TODOS
+        // los idiomas de subtítulos/CC disponibles, típicamente varias
+        // decenas en un vídeo popular) salvo que raw_options ya traiga una
+        // clave "sub-lang"/"sub-langs"/"srt-lang" — no hace falta que el
+        // valor sea real, solo que no esté vacío, así que un código
+        // inexistente basta para desactivarlo sin más. La app no muestra
+        // subtítulos en ningún sitio, así que "all" era puro coste sin
+        // beneficio: cada idioma pide su propio PO Token por separado (ver
+        // más arriba), sumando varios segundos de más al arranque cuando
+        // el vídeo tiene muchas traducciones automáticas.
+        client.send(command: ["set_property", "ytdl-raw-options", "sub-langs=00-none"])
         for (name, value) in RenderSettingsManager.shared.quality.mpvProperties {
             client.send(command: ["set_property", name, value])
         }

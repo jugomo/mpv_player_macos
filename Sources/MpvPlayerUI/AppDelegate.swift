@@ -47,6 +47,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // listo, así que conviene lanzarlo ya para que lo esté antes de que
         // el usuario pulse Reproducir por primera vez (ver POTProviderLauncher).
         POTProviderLauncher.start()
+        // Chequeo silencioso, no bloqueante: ver UpdateChecker (por qué solo
+        // informa en vez de autoactualizar) y AboutView (dónde se muestra).
+        UpdateChecker.shared.checkForUpdatesInBackground()
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
