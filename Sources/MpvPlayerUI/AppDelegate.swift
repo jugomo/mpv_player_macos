@@ -44,6 +44,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var titleToastIsHovering = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // En segundo plano y sin bloquear el arranque: tarda ~1-2s en estar
+        // listo, así que conviene lanzarlo ya para que lo esté antes de que
+        // el usuario pulse Reproducir por primera vez (ver POTProviderLauncher).
+        POTProviderLauncher.start()
+        // Chequeo silencioso, no bloqueante: ver UpdateChecker (por qué solo
+        // informa en vez de autoactualizar) y AboutView (dónde se muestra).
+        UpdateChecker.shared.checkForUpdatesInBackground()
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             button.image = NSImage(systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv player UI")
@@ -250,18 +258,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Botón "Playlist" de la ventana principal: si la playlist ya está
-    /// visible (acoplada o flotante) la oculta; si no, la muestra acoplada.
-    /// La preferencia se persiste (a diferencia del cierre automático de
-    /// `hidePlaylistWindow` al perder el foco o cerrarse la ventana
-    /// principal, que no la toca) para que la próxima vez que se abra la
-    /// ventana principal —incluso en un lanzamiento distinto de la app— la
-    /// playlist vuelva a aparecer si se dejó así a propósito.
+    /// visible (acoplada o flotante) la oculta; si no, la muestra en el
+    /// último modo recordado (`PlaybackWindowSettingsManager.playlistDocked`).
+    /// La visibilidad también se persiste (a diferencia del cierre
+    /// automático de `hidePlaylistWindow` al perder el foco o cerrarse la
+    /// ventana principal, que no la toca) para que la próxima vez que se
+    /// abra la ventana principal —incluso en un lanzamiento distinto de la
+    /// app— la playlist vuelva a aparecer si se dejó así a propósito.
     private func togglePlaylistVisibility() {
         if playlistWindow?.isVisible == true {
             hidePlaylistWindow()
             PlaybackWindowSettingsManager.shared.playlistVisible = false
         } else {
-            showPlaylistWindow(docked: true)
+            showPlaylistWindow(docked: PlaybackWindowSettingsManager.shared.playlistDocked)
             PlaybackWindowSettingsManager.shared.playlistVisible = true
         }
     }
@@ -272,7 +281,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewModel.isPlaylistVisible = false
     }
 
-    private static let defaultFloatingPlaylistSize = NSSize(width: 460, height: 480)
+    /// Alto persistido entre lanzamientos (ver
+    /// `PlaybackWindowSettingsManager.floatingPlaylistHeight`).
+    private static var defaultFloatingPlaylistSize: NSSize {
+        NSSize(width: 460, height: PlaybackWindowSettingsManager.shared.floatingPlaylistHeight)
+    }
+    private static let minFloatingPlaylistSize = NSSize(width: 260, height: 200)
+    private var playlistResizeObserver: NSObjectProtocol?
+    private var playlistMoveObserver: NSObjectProtocol?
 
     /// Botón "Playlist" de la ventana principal (popover) => acoplada al
     /// lado izquierdo de esa ventana. Opción "Playlist" del menú contextual
@@ -281,6 +297,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let wasAlreadyVisible = playlistWindow?.isVisible ?? false
         let modeChanged = isPlaylistDocked != docked
         isPlaylistDocked = docked
+        // Se recuerda el modo real en el que se acaba de mostrar,
+        // independientemente de por qué vía se pidió (botón de
+        // acoplar/desacoplar, botón "Playlist" de la ventana principal, u
+        // opción del menú de la barra de menú), para reabrirla igual la
+        // próxima vez.
+        PlaybackWindowSettingsManager.shared.playlistDocked = docked
 
         if playlistWindow == nil {
             let hostingController = NSHostingController(rootView: makePlaylistView(docked: docked))
@@ -288,14 +310,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             window.title = "Playlist"
             window.setContentSize(Self.defaultFloatingPlaylistSize)
             window.isReleasedWhenClosed = false
+            // `windowWillResize` fuerza el ancho fijo en modo acoplado (ver
+            // ese método): `minSize == maxSize` en el ancho ya debería
+            // bastar, pero una ventana sin barra de título no siempre
+            // respeta esos límites igual de estricto que una normal, así
+            // que se refuerza a mano ahí.
+            window.delegate = self
             playlistWindow = window
             playlistHostingController = hostingController
-            installDockedResizeHandle(in: window)
             playlistWindowCloseObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.willCloseNotification, object: window, queue: .main
             ) { [weak self] _ in
                 self?.stopObservingDockedMainWindow()
                 self?.viewModel.isPlaylistVisible = false
+            }
+            // Anclada: el ancho es fijo (`dockedPlaylistWidth`) y solo el
+            // alto es ajustable a mano (arrastrando el borde superior o
+            // inferior nativo). Flotante: solo el alto también, pero libre
+            // en ambos ejes de ancho mínimo/máximo. En los dos casos se
+            // persiste entre lanzamientos (ver `PlaybackWindowSettingsManager`)
+            // y se ignoran los cambios de frame que dispara la propia app
+            // (`isApplyingDockedFrame`), para no confundirlos con un
+            // arrastre real del usuario.
+            playlistResizeObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didResizeNotification, object: window, queue: .main
+            ) { [weak self, weak window] _ in
+                guard let self, let window, !self.isApplyingDockedFrame else { return }
+                if self.isPlaylistDocked {
+                    PlaybackWindowSettingsManager.shared.dockedPlaylistHeight = Double(window.frame.height)
+                } else {
+                    PlaybackWindowSettingsManager.shared.floatingPlaylistHeight = Double(window.frame.height)
+                }
+            }
+            // Posición de la playlist FLOTANTE (anclada no tiene sentido:
+            // su posición la dicta siempre `applyDockedFrame`, y no es
+            // movible por el usuario — `isMovable = false` más abajo).
+            playlistMoveObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.didMoveNotification, object: window, queue: .main
+            ) { [weak self, weak window] _ in
+                guard let self, let window, !self.isApplyingDockedFrame, !self.isPlaylistDocked else { return }
+                PlaybackWindowSettingsManager.shared.floatingPlaylistOrigin = window.frame.origin
             }
         } else {
             playlistHostingController?.rootView = makePlaylistView(docked: docked)
@@ -305,10 +359,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
 
         window.styleMask = docked ? [.resizable] : [.titled, .closable, .resizable, .miniaturizable]
-        dockedResizeHandle?.isHidden = !docked
 
         if docked, let mainWindow = mainPopoverWindow() {
             window.isMovable = false
+            // Ancho fijo (min == max, así AppKit ni siquiera ofrece el
+            // cursor de resize en los bordes izquierdo/derecho), alto libre
+            // dentro de un rango razonable.
+            window.minSize = NSSize(width: dockedPlaylistWidth, height: Self.minDockedPlaylistHeight)
+            window.maxSize = NSSize(width: dockedPlaylistWidth, height: .greatestFiniteMagnitude)
+            // Ventana no opaca para poder redondear sus esquinas a mano (ver
+            // `PlaylistView`, que dibuja el fondo con el radio real): un
+            // `NSWindow` opaco normal seguiría rellenando el rectángulo
+            // completo detrás, asomando en cuadrado por las esquinas
+            // redondeadas.
+            window.isOpaque = false
+            window.backgroundColor = .clear
             observeDockedMainWindow(mainWindow)
             applyDockedFrame(to: window, relativeTo: mainWindow)
             if modeChanged || !wasAlreadyVisible {
@@ -316,21 +381,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // Con la ventana aún no visible, el `setFrame` de arriba no
                 // siempre alcanza a que SwiftUI/NSHostingController vuelvan
                 // a maquetar su contenido al tamaño final (queda con el alto
-                // por defecto del primer layout, centrado y dejando un
-                // margen vacío arriba). Repetirlo ahora que la ventana ya
-                // está en pantalla fuerza ese re-layout real — es el mismo
+                // por defecto del primer layout, mal posicionada y dejando
+                // un margen vacío). Reaplicarlo en la siguiente vuelta del
+                // run loop (no en la misma, como antes: AppKit/SwiftUI
+                // todavía no habían terminado de procesar el layout inicial
+                // disparado por `orderFront` dentro del mismo ciclo, así que
+                // repetirlo ahí mismo no siempre alcanzaba) fuerza ese
+                // re-layout real ya con la ventana en pantalla — el mismo
                 // camino que sigue un redimensionado manual (que sí funciona).
-                applyDockedFrame(to: window, relativeTo: mainWindow)
-                animateRollOutReveal(on: window)
+                DispatchQueue.main.async { [weak self, weak window] in
+                    guard let self, let window, let mainWindow = self.mainPopoverWindow() else { return }
+                    self.applyDockedFrame(to: window, relativeTo: mainWindow)
+                    self.animateRollOutReveal(on: window)
+                }
             }
         } else {
             stopObservingDockedMainWindow()
             window.isMovable = true
+            window.minSize = Self.minFloatingPlaylistSize
+            window.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            window.isOpaque = true
+            window.backgroundColor = .windowBackgroundColor
             if modeChanged {
                 window.setContentSize(Self.defaultFloatingPlaylistSize)
             }
             if modeChanged || !wasAlreadyVisible {
-                window.center()
+                if let origin = PlaybackWindowSettingsManager.shared.floatingPlaylistOrigin {
+                    window.setFrameOrigin(origin)
+                } else {
+                    window.center()
+                }
             }
         }
         window.makeKeyAndOrderFront(nil)
@@ -345,62 +425,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return popover.contentViewController?.view.window
     }
 
-    /// Ancho de la playlist acoplada. El usuario puede ensancharla
-    /// arrastrando su borde izquierdo (ver `LeftEdgeResizeHandle`); se
-    /// recuerda mientras la app siga abierta.
-    private var dockedPlaylistWidth: CGFloat = 450
-    private static let minDockedPlaylistWidth: CGFloat = 260
-    private var dockedResizeHandle: LeftEdgeResizeHandle?
+    /// Ancho fijo de la playlist acoplada: no es ajustable por el usuario
+    /// (solo el alto lo es, arrastrando el borde superior/inferior nativo —
+    /// ver `minSize`/`maxSize` en `showPlaylistWindow`).
+    private let dockedPlaylistWidth: CGFloat = 450
+    private static let minDockedPlaylistHeight: CGFloat = 200
+    /// Separación mínima garantizada entre el borde superior de la playlist
+    /// acoplada y la barra de menús (medida desde `visibleFrame`, que ya
+    /// excluye la propia barra de menús — así que este margen se suma a
+    /// eso, no lo compite). Antes se restaba un desplazamiento fijo al Y de
+    /// la ventana principal (asumiendo que su propio borde superior ya
+    /// tenía hueco de sobra por la "puntita" del popover), pero en la
+    /// práctica ese hueco resultó ser demasiado pequeño y la playlist
+    /// seguía quedando pegada arriba del todo: medirlo directo contra la
+    /// pantalla, no contra la ventana principal, es lo único que lo
+    /// garantiza de verdad.
+    private static let dockedTopMargin: CGFloat = 6
+    /// `true` mientras `applyDockedFrame` cambia el frame por su cuenta
+    /// (para seguir a la ventana principal), así el observador de
+    /// `NSWindow.didResizeNotification` no lo confunde con un arrastre real
+    /// del usuario y termina "congelando" el alto guardado al primer valor
+    /// que la ventana principal tuviera en ese momento.
+    private var isApplyingDockedFrame = false
 
     private func applyDockedFrame(to window: NSWindow, relativeTo mainWindow: NSWindow) {
         let mainFrame = mainWindow.frame
+        let height = PlaybackWindowSettingsManager.shared.dockedPlaylistHeight.map { CGFloat($0) } ?? mainFrame.height
+
+        // El borde superior se fija siempre a `dockedTopMargin` de la barra
+        // de menús (no de la ventana principal: eso es lo que se probó
+        // antes y seguía sin dejar hueco real), y el alto crece hacia abajo
+        // desde ahí. El ancho y la X siguen ancladas a la ventana principal
+        // como siempre.
+        let screenTop = (mainWindow.screen ?? NSScreen.main)?.visibleFrame.maxY ?? mainFrame.maxY
+        let top = screenTop - Self.dockedTopMargin
+
         let frame = NSRect(
             x: mainFrame.minX - dockedPlaylistWidth,
-            y: mainFrame.minY,
+            y: top - height,
             width: dockedPlaylistWidth,
-            height: mainFrame.height
+            height: height
         )
+        isApplyingDockedFrame = true
         window.setFrame(frame, display: true)
-    }
-
-    /// Instala, una sola vez, la franja invisible en el borde izquierdo del
-    /// contenido de la ventana que permite ensancharla arrastrando (la
-    /// ventana acoplada no tiene barra de título, así que AppKit no ofrece
-    /// redimensionado automático por bordes). Se muestra/oculta según el
-    /// modo (acoplada/flotante) en `showPlaylistWindow`.
-    private func installDockedResizeHandle(in window: NSWindow) {
-        guard let contentView = window.contentView else { return }
-        let handle = LeftEdgeResizeHandle()
-        handle.onDrag = { [weak self, weak window] deltaX in
-            guard let self, let window else { return }
-            self.adjustDockedPlaylistWidth(of: window, byDeltaX: deltaX)
-        }
-        handle.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(handle)
-        NSLayoutConstraint.activate([
-            handle.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
-            handle.topAnchor.constraint(equalTo: contentView.topAnchor),
-            handle.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
-            handle.widthAnchor.constraint(equalToConstant: 6),
-        ])
-        dockedResizeHandle = handle
-    }
-
-    /// Redimensiona la ventana acoplada arrastrando su borde izquierdo: el
-    /// borde derecho (pegado a la ventana principal) queda fijo, y solo se
-    /// mueve/crece el izquierdo, sin superar el borde de la pantalla.
-    private func adjustDockedPlaylistWidth(of window: NSWindow, byDeltaX deltaX: CGFloat) {
-        guard isPlaylistDocked else { return }
-        var frame = window.frame
-        let rightEdge = frame.maxX
-        let proposedWidth = frame.width - deltaX
-        let screenMinX = window.screen?.visibleFrame.minX ?? -.greatestFiniteMagnitude
-        let maxWidth = rightEdge - screenMinX
-        let newWidth = min(maxWidth, max(Self.minDockedPlaylistWidth, proposedWidth))
-        frame.size.width = newWidth
-        frame.origin.x = rightEdge - newWidth
-        window.setFrame(frame, display: true)
-        dockedPlaylistWidth = newWidth
+        isApplyingDockedFrame = false
     }
 
     /// Mantiene la playlist acoplada pegada a la ventana principal tanto si
@@ -649,7 +717,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        MPVLauncher.terminateAllRunningProcesses()
+        MPVLauncher.terminateSession()
+        POTProviderLauncher.stop()
     }
 
     private func togglePopover(_ sender: NSStatusBarButton) {
@@ -662,7 +731,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             popover.contentViewController?.view.window?.makeKey()
             repositionPopoverBelowStatusItem(sender)
             if PlaybackWindowSettingsManager.shared.playlistVisible {
-                showPlaylistWindow(docked: true)
+                showPlaylistWindow(docked: PlaybackWindowSettingsManager.shared.playlistDocked)
             }
         }
     }
@@ -740,6 +809,21 @@ extension AppDelegate: NSPopoverDelegate {
     }
 }
 
+extension AppDelegate: NSWindowDelegate {
+    /// Único delegado de `playlistWindow` (ver `showPlaylistWindow`).
+    /// Acoplada, fuerza el ancho propuesto de vuelta al fijo en cualquier
+    /// redimensionado interactivo (arrastrando un borde o una esquina),
+    /// dejando pasar el alto propuesto tal cual: `minSize == maxSize` en el
+    /// ancho (ver `showPlaylistWindow`) ya debería bastar por sí solo, pero
+    /// una ventana sin barra de título no siempre lo respeta con el mismo
+    /// rigor que una normal, así que se refuerza aquí, el punto que AppKit
+    /// consulta de verdad en cada frame del arrastre.
+    func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+        guard sender === playlistWindow, isPlaylistDocked else { return frameSize }
+        return NSSize(width: dockedPlaylistWidth, height: frameSize.height)
+    }
+}
+
 /// Ventana del toast: recibe eventos de ratón (para detectar hover y pausar
 /// el auto-cierre) pero nunca pasa a ser la ventana clave/principal, así que
 /// ni roba el foco de mpv/otra app ni activa esta app en segundo plano solo
@@ -756,21 +840,4 @@ private final class NonActivatingPanel: NSWindow {
 private final class BorderlessInteractableWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
-}
-
-/// Franja invisible en el borde izquierdo del contenido de la playlist
-/// acoplada: al no tener barra de título, AppKit no ofrece redimensionado
-/// automático arrastrando el borde, así que se implementa a mano aquí. Solo
-/// informa el desplazamiento del ratón; quien la usa decide cómo aplicarlo
-/// al frame de la ventana (ver `AppDelegate.adjustDockedPlaylistWidth`).
-private final class LeftEdgeResizeHandle: NSView {
-    var onDrag: ((_ deltaX: CGFloat) -> Void)?
-
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .resizeLeftRight)
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        onDrag?(event.deltaX)
-    }
 }

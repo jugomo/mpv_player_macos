@@ -20,4 +20,40 @@ struct PlaylistItem: Codable, Identifiable, Equatable {
         self.title = title
         self.description = description
     }
+
+    /// `true` para ítems añadidos con el selector de archivos (ver
+    /// `PlayerViewModel.playLocalFiles`), que guarda la ruta absoluta llana
+    /// en `urlString` en vez de una URL con esquema (ver comentario en
+    /// `MPVLauncher.play`). Usado para elegir el icono de tipo en la
+    /// playlist y para localizar la carátula local a su lado.
+    var isLocalFile: Bool { urlString.hasPrefix("/") }
+
+    /// Extensiones de audio "puro" reconocidas: un archivo local con una de
+    /// estas extensiones siempre se reproduce en modo "Solo audio" (ver
+    /// `isLocalAudioFile`), sin importar qué `quality` tenga guardada el
+    /// ítem — la extensión del archivo es la fuente de verdad. La `quality`
+    /// persistida puede haber quedado desactualizada (p. ej. un ítem
+    /// añadido antes de que este mecanismo existiera, o del que el usuario
+    /// cambió la calidad a mano cuando ese selector todavía se mostraba
+    /// para archivos locales).
+    private static let audioOnlyExtensions: Set<String> = [
+        "mp3", "wav", "aiff", "aif", "flac", "aac", "m4a", "ogg", "opus", "wma", "alac", "wv"
+    ]
+
+    /// `true` si `urlString` es la ruta local de un archivo de audio "puro".
+    /// Función libre (no solo propiedad de instancia) para poder aplicarse
+    /// también a `urlText` antes de que exista un `PlaylistItem` — ver
+    /// `PlayerViewModel.play`, que la usa para decidir la calidad real de
+    /// reproducción independientemente de lo que pida quien llame.
+    static func isLocalAudioFile(urlString: String) -> Bool {
+        guard urlString.hasPrefix("/") else { return false }
+        return audioOnlyExtensions.contains((urlString as NSString).pathExtension.lowercased())
+    }
+
+    /// `true` si este ítem es un archivo de audio "puro" local (ver
+    /// `isLocalAudioFile(urlString:)`). Debe consultarse en vez de comparar
+    /// `quality != .audioOnly` directamente en cualquier decisión de UI
+    /// (ventana con/sin vídeo, vúmetro, etc.), precisamente para no
+    /// depender de que `quality` esté al día.
+    var isLocalAudioFile: Bool { Self.isLocalAudioFile(urlString: urlString) }
 }

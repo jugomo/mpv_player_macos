@@ -26,8 +26,10 @@ enum LKey {
     case openTerminalToInstallHomebrew, installWithHomebrew
     case aboutCredit, helpSectionTitle, helpBody
     case creditsSectionTitle, creditsMpvDescription, creditsYtdlpDescription, creditsDisclaimer
+    case creditsBgutilDescription
     case playlistTitle, importEllipsis, exportEllipsis, noVideosYet
     case doubleClickToPlay, qualityTooltip, copyUrlTooltip, removeFromPlaylistTooltip
+    case dragToReorderTooltip
     case exportFailedPrefix, importFailedPrefix
     case mpvNotInstalledError, installingPrefix, installationCompleted
     case homebrewNotInstalledErrorDescription
@@ -38,12 +40,20 @@ enum LKey {
     case closeWindowsOnPlayToggleLabel, closeWindowsOnPlayHint
     case fullscreenTooltip, volumeTooltip, vuMeterToggleTooltip, alwaysOnTopTooltip
     case playLinkLabel, playLinkTooltip
+    case openLocalFileLabel, openLocalFileTooltip
+    case localFileItemTooltip, urlItemTooltip
     case showDescriptionTooltip
     case dockPlaylistTooltip, undockPlaylistTooltip
     case showPlaylistTooltip, hidePlaylistTooltip
     case downloadTooltip, downloadMp3Tooltip, cancelDownloadTooltip
     case revealInFinderTooltip, retryDownloadTooltip
     case downloadNeedsYtdlp, downloadNeedsFfmpeg, downloadFailedGeneric
+    case generalTab, logViewerTab
+    case reloadButton, exportButton, clearButton
+    case emptyLogMessage, clearLogConfirmTitle, clearLogConfirmMessage, cancel
+    case exportLogFailedPrefix, clearLogFailedPrefix
+    case logTruncatedNoteFormat
+    case updateAvailableFormat, updateAvailableSeeRelease
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -129,6 +139,11 @@ final class LocalizationManager: ObservableObject {
             "Herramienta de línea de comandos de código abierto usada para descargar y extraer los vídeos de YouTube.",
             "Open-source command-line tool used to download and extract YouTube videos."
         ),
+        .creditsBgutilDescription: (
+            "Genera el token que YouTube exige cada vez más antes de servir el vídeo/audio, mitigando (sin garantizarlo del todo) los errores HTTP 403 al reproducir.",
+            "Generates the token YouTube increasingly requires before serving video/audio, mitigating (without fully guaranteeing) HTTP 403 errors during playback."
+        ),
+
         .creditsDisclaimer: (
             "Proyecto personal sin afiliación con YouTube ni Google. Usa bajo tu propio riesgo, no se ofrece ayuda o soporte.",
             "Personal project, not affiliated with YouTube or Google. Use at your own risk, no help or support is provided."
@@ -141,6 +156,7 @@ final class LocalizationManager: ObservableObject {
         .doubleClickToPlay: ("Doble clic para reproducir", "Double-click to play"),
         .qualityTooltip: ("Calidad al reproducir", "Quality when played"),
         .copyUrlTooltip: ("Copiar URL al portapapeles", "Copy URL to clipboard"),
+        .dragToReorderTooltip: ("Arrastra para reordenar", "Drag to reorder"),
         .removeFromPlaylistTooltip: ("Eliminar de la playlist", "Remove from playlist"),
         .exportFailedPrefix: ("No se pudo exportar la playlist: ", "Could not export the playlist: "),
         .importFailedPrefix: ("No se pudo importar la playlist: ", "Could not import the playlist: "),
@@ -187,6 +203,12 @@ final class LocalizationManager: ObservableObject {
         .playLinkLabel: ("Reproducir enlace", "Play link"),
         .playLinkTooltip: ("Clic para mostrar/ocultar los controles de reproducción", "Click to show/hide the playback controls"),
 
+        .openLocalFileLabel: ("Abrir archivo local", "Open local file"),
+        .openLocalFileTooltip: ("Clic para abrir un archivo multimedia del ordenador", "Click to open a media file from this computer"),
+
+        .localFileItemTooltip: ("Archivo local", "Local file"),
+        .urlItemTooltip: ("Enlace URL", "URL link"),
+
         .showDescriptionTooltip: ("Clic para mostrar/ocultar la descripción", "Click to show/hide the description"),
 
         .dockPlaylistTooltip: ("Acoplar junto a la ventana principal", "Dock next to the main window"),
@@ -208,5 +230,30 @@ final class LocalizationManager: ObservableObject {
             "ffmpeg is required to download (install it with Homebrew: brew install ffmpeg)"
         ),
         .downloadFailedGeneric: ("No se pudo completar la descarga.", "The download could not be completed."),
+
+        .generalTab: ("General", "General"),
+        .logViewerTab: ("Registro", "Log Viewer"),
+        .reloadButton: ("Recargar", "Reload"),
+        .exportButton: ("Exportar…", "Export…"),
+        .clearButton: ("Borrar", "Clear"),
+        .emptyLogMessage: ("El archivo de registro está vacío.", "The log file is empty."),
+        .clearLogConfirmTitle: ("¿Borrar el registro?", "Clear the log?"),
+        .clearLogConfirmMessage: (
+            "Esta acción vaciará el archivo de registro de forma permanente.",
+            "This will permanently empty the log file."
+        ),
+        .cancel: ("Cancelar", "Cancel"),
+        .exportLogFailedPrefix: ("No se pudo exportar el registro: ", "Could not export the log: "),
+        .clearLogFailedPrefix: ("No se pudo borrar el registro: ", "Could not clear the log: "),
+        .logTruncatedNoteFormat: (
+            "Mostrando los últimos %@ de %@ en total. Usa Exportar para guardar el archivo completo.",
+            "Showing the last %@ of %@ total. Use Export to save the whole file."
+        ),
+
+        .updateAvailableFormat: (
+            "Hay una versión más reciente de %1$@: %3$@ (esta app trae %2$@). Vuelve a correr ./build.sh y reinstala para actualizarla.",
+            "A newer version of %1$@ is available: %3$@ (this app bundles %2$@). Re-run ./build.sh and reinstall to update it."
+        ),
+        .updateAvailableSeeRelease: ("Ver la versión más reciente", "See the latest release"),
     ]
 }

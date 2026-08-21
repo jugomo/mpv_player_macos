@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Usada para que el contenedor cuadrado de la miniatura conozca el alto real
 /// de la columna vecina (controles + seek bar + vúmetro) y se ajuste a ella,
@@ -36,20 +38,25 @@ struct PlayerView: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity, alignment: .center)
 
-                    HStack {
+                    HStack(spacing: 12) {
                         Spacer()
+                        Button {
+                            openLocalFile()
+                        } label: {
+                            Image(systemName: "folder")
+                                .font(.subheadline)
+                        }
+                        .buttonStyle(.plain)
+                        .help(loc.t(.openLocalFileTooltip))
+                        .accessibilityLabel(loc.t(.openLocalFileLabel))
+
                         Button {
                             withAnimation(.easeInOut(duration: 0.3)) {
                                 isPlayFormExpanded.toggle()
                             }
                         } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "link")
-                                    .font(.subheadline)
-                                Image(systemName: "chevron.down")
-                                    .font(.caption)
-                                    .rotationEffect(.degrees(isPlayFormExpanded ? 180 : 0))
-                            }
+                            Image(systemName: "link")
+                                .font(.subheadline)
                         }
                         .buttonStyle(.plain)
                         .help(loc.t(.playLinkTooltip))
@@ -71,13 +78,7 @@ struct PlayerView: View {
                 HStack(alignment: .top, spacing: 20) {
                     ZStack {
                         Color.black
-                        AsyncImage(url: thumbnailURL) { phase in
-                            if case .success(let image) = phase {
-                                image.resizable().aspectRatio(contentMode: .fit)
-                            } else {
-                                Color.clear
-                            }
-                        }
+                        thumbnailImage(for: thumbnailURL)
                     }
                     .frame(width: thumbnailSide, height: thumbnailSide)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -463,5 +464,45 @@ struct PlayerView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.yellow.opacity(0.15))
         .cornerRadius(6)
+    }
+
+    /// Carátula del ítem en reproducción (ver
+    /// `PlayerViewModel.currentlyPlayingThumbnailURL`). Las locales se cargan
+    /// directo con `NSImage` en vez de con `AsyncImage`: `URLSession` (que
+    /// usa `AsyncImage` por debajo) no está garantizado para esquema
+    /// "file://", mientras que un archivo local ya está en disco y no
+    /// necesita nada asíncrono.
+    @ViewBuilder
+    private func thumbnailImage(for url: URL) -> some View {
+        if url.isFileURL {
+            if let nsImage = NSImage(contentsOf: url) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+            } else {
+                Color.clear
+            }
+        } else {
+            AsyncImage(url: url) { phase in
+                if case .success(let image) = phase {
+                    image.resizable().aspectRatio(contentMode: .fit)
+                } else {
+                    Color.clear
+                }
+            }
+        }
+    }
+
+    /// Selector de archivos del sistema para elegir vídeo/audio local, con
+    /// selección múltiple: el primero elegido se reproduce de inmediato
+    /// (igual que un enlace URL) y el resto se encola en la playlist (ver
+    /// `PlayerViewModel.playLocalFiles`).
+    private func openLocalFile() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.audiovisualContent]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+        viewModel.playLocalFiles(at: panel.urls)
     }
 }

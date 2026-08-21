@@ -103,6 +103,12 @@ final class PlaylistStore: ObservableObject {
         save()
     }
 
+    /// Reordena manualmente los ítems (arrastrar y soltar en la UI).
+    func move(fromOffsets source: IndexSet, toOffset destination: Int) {
+        items.move(fromOffsets: source, toOffset: destination)
+        save()
+    }
+
     /// Item right below `id` in the list (older entry), wrapping around to
     /// the top when `id` is the last one. Used to move forward when
     /// advancing the playlist via media keys / Control Center.

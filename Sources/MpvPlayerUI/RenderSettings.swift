@@ -25,14 +25,19 @@ enum RenderQuality: String, CaseIterable, Identifiable, Codable {
         }
     }
 
-    /// Flags de mpv para el filtro de escalado. `.quality` no añade ninguno
-    /// para dejar el valor por defecto de mpv (lanczos en gpu-next).
-    var mpvArguments: [String] {
+    /// Propiedades de mpv para el filtro de escalado, reaplicadas por
+    /// `set_property` en cada vídeo (ver `MPVLauncher.applySessionSettings`)
+    /// ya que el proceso mpv se reutiliza entre reproducciones en vez de
+    /// relanzarse con estos como flags de arranque. `.quality` las fija a
+    /// `""` para volver al valor por defecto de mpv (lanczos en gpu-next):
+    /// a diferencia de un flag de arranque ausente, una propiedad en
+    /// caliente necesita un valor explícito para "desfijarla".
+    var mpvProperties: [String: String] {
         switch self {
         case .performance:
-            return ["--scale=bilinear", "--cscale=bilinear", "--dscale=bilinear"]
+            return ["scale": "bilinear", "cscale": "bilinear", "dscale": "bilinear"]
         case .quality:
-            return []
+            return ["scale": "", "cscale": "", "dscale": ""]
         }
     }
 }
