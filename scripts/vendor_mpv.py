@@ -5,7 +5,10 @@ para que dyld las resuelva de forma relativa (@rpath) en vez de a rutas
 absolutas de Homebrew (/opt/homebrew/..., /usr/local/...). Así el mpv
 empaquetado funciona en máquinas sin Homebrew instalado.
 
-Uso: vendor_mpv.py <mpv_source_path> <bundle_resources_dir>
+Uso: vendor_mpv.py <mpv_source_path> <bundle_resources_dir> [codesign_identity]
+
+`codesign_identity` es opcional (por defecto "-", ad-hoc); ver build.sh
+(CODESIGN_IDENTITY) para por qué convendría pasar una identidad estable.
 """
 import os
 import re
@@ -46,7 +49,7 @@ def discover_closure(mpv_path):
     return closure
 
 
-def rewrite(path, old_to_new, is_dylib):
+def rewrite(path, old_to_new, is_dylib, codesign_identity):
     for dep in otool_deps(path):
         if dep.startswith(VENDORED_PREFIXES):
             dep_real = os.path.realpath(dep)
@@ -64,15 +67,16 @@ def rewrite(path, old_to_new, is_dylib):
         subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../lib", path],
                         check=False)
 
-    subprocess.run(["codesign", "--force", "--sign", "-", path], check=True)
+    subprocess.run(["codesign", "--force", "--sign", codesign_identity, path], check=True)
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         print(__doc__, file=sys.stderr)
         sys.exit(1)
 
     mpv_source, resources_dir = sys.argv[1], sys.argv[2]
+    codesign_identity = sys.argv[3] if len(sys.argv) == 4 else "-"
     mpv_source = os.path.realpath(mpv_source)
 
     bin_dir = os.path.join(resources_dir, "bin")
@@ -92,8 +96,8 @@ def main():
         shutil.copy2(real, os.path.join(lib_dir, basename))
 
     for real, basename in closure.items():
-        rewrite(os.path.join(lib_dir, basename), old_to_new, is_dylib=True)
-    rewrite(mpv_dest, old_to_new, is_dylib=False)
+        rewrite(os.path.join(lib_dir, basename), old_to_new, is_dylib=True, codesign_identity=codesign_identity)
+    rewrite(mpv_dest, old_to_new, is_dylib=False, codesign_identity=codesign_identity)
 
     print(f"==> mpv vendorizado con {len(closure)} dylibs en {resources_dir}")
 

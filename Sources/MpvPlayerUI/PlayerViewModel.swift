@@ -194,7 +194,36 @@ final class PlayerViewModel: ObservableObject {
     /// reproducción nueva antes de tiempo.
     private var loadingToken: Int = 0
 
+    /// `true` justo antes de terminar la sesión mpv a propósito (botón/menú
+    /// Stop, ver `stop()`), para que `handlePlaybackEnded` sepa que NO debe
+    /// encadenar automáticamente al siguiente ítem — a diferencia de cuando
+    /// el vídeo/audio actual simplemente termina solo. Se resetea en cuanto
+    /// se consulta, así que solo cubre la próxima llamada a
+    /// `handlePlaybackEnded`, nunca una posterior sin relación.
+    private var didStopExplicitly = false
+
     private func handlePlaybackEnded(token: Int) {
+        // Este callback es compartido por dos casos bien distintos: el
+        // vídeo/audio actual termina solo (fin real, hay que intentar
+        // encadenar el siguiente) o la sesión mpv se termina a propósito —
+        // no solo por `stop()`, también internamente al cambiar entre sesión
+        // con/sin ventana (p.ej. de vídeo normal a "Solo audio" o viceversa,
+        // ver `MPVLauncher.session(for:)`/`terminate`). En ese segundo caso
+        // interno el token ya no coincide con `loadingToken` (la
+        // reproducción nueva ya se registró antes de que este aviso, async,
+        // llegara), así que basta ignorarlo del todo: la reproducción nueva
+        // ya se está encargando de todo el estado por su cuenta.
+        guard token == loadingToken else { return }
+
+        let shouldAutoAdvance = !didStopExplicitly
+        didStopExplicitly = false
+        if shouldAutoAdvance, playNext() {
+            // `playNext()` ya deja listo todo el estado "en marcha"
+            // (currentlyPlayingItemID, isPaused, Now Playing, etc.) para el
+            // ítem siguiente; no hay nada más que limpiar aquí.
+            return
+        }
+
         currentlyPlayingItemID = nil
         isPaused = false
         currentTimeSeconds = 0
@@ -204,12 +233,7 @@ final class PlayerViewModel: ObservableObject {
         audioLevels.right = 0
         onPauseStateChanged?(false)
         onPlaybackStopped?()
-        // Salvaguarda: si mpv termina antes de llegar a mostrar vídeo (p.ej.
-        // el usuario cierra su ventana durante la carga), el hint de carga no
-        // se quedaría colgado para siempre.
-        if token == loadingToken {
-            onLoadingStateChanged?(false)
-        }
+        onLoadingStateChanged?(false)
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         MPNowPlayingInfoCenter.default().playbackState = .stopped
 
@@ -382,8 +406,15 @@ final class PlayerViewModel: ObservableObject {
             errorMessage = LocalizationManager.shared.t(.mpvNotInstalledError)
             return
         }
-        let effectiveQuality = overrideQuality ?? quality
         let targetURLString = urlText
+        // Un archivo de audio local (mp3, wav...) siempre se reproduce en
+        // modo "Solo audio", pase lo que pase por `overrideQuality`/`quality`
+        // (que puede venir de una `PlaylistItem.quality` desactualizada —
+        // ver `PlaylistItem.isLocalAudioFile` — o de la calidad que tuviera
+        // seleccionada el desplegable): la extensión del archivo manda.
+        let effectiveQuality = PlaylistItem.isLocalAudioFile(urlString: targetURLString)
+            ? .audioOnly
+            : overrideQuality ?? quality
         loadingToken += 1
         let requestToken = loadingToken
         onLoadingStateChanged?(true)
@@ -412,6 +443,13 @@ final class PlayerViewModel: ObservableObject {
             )
             playlistStore.add(urlString: targetURLString, quality: effectiveQuality)
             let playingItem = playlistStore.items.first(where: { $0.urlString == targetURLString })
+            // `playlistStore.add` no toca la calidad de un ítem ya existente
+            // (evita duplicados sin más): si es un archivo de audio local
+            // con una calidad vieja guardada de antes de este mecanismo, se
+            // corrige aquí para que las próximas veces ya nazca bien.
+            if let playingItem, playingItem.quality != effectiveQuality, effectiveQuality == .audioOnly {
+                playlistStore.updateQuality(for: playingItem, quality: .audioOnly)
+            }
             currentlyPlayingItemID = playingItem?.id
             isPaused = false
             currentTimeSeconds = 0
@@ -450,6 +488,33 @@ final class PlayerViewModel: ObservableObject {
     func play(item: PlaylistItem) {
         urlText = item.urlString
         play(quality: item.quality)
+    }
+
+    /// Reproduce el primer archivo elegido con el selector de archivos del
+    /// sistema (ver `PlayerView.openLocalFile`, que permite selección
+    /// múltiple) y encola el resto en la playlist para poder avanzar a ellos
+    /// con "siguiente". Reutiliza exactamente el mismo camino que un enlace
+    /// URL (`play()`, resolución de título/duración por IPC, etc.): solo
+    /// cambia el origen del string que llega a `urlText`. Cada ruta se manda
+    /// llana (`url.path`), no como URL "file://", para que mpv la cargue
+    /// directo con su demuxer en vez de pasarla primero por el ytdl_hook
+    /// (ver validación en `MPVLauncher.play`).
+    func playLocalFiles(at urls: [URL]) {
+        guard let first = urls.first else { return }
+        // `playlistStore.add` inserta cada ítem nuevo al principio de la
+        // lista, así que se recorren en orden inverso para que el orden
+        // final coincida con el de la selección (el primero elegido queda
+        // arriba del todo, justo donde `play()` lo pondría de todos modos).
+        // La calidad real para audio local la decide `play()` a partir de
+        // la extensión (ver `PlaylistItem.isLocalAudioFile`), no aquí; se
+        // pasa `quality` (la seleccionada en el desplegable) sin más porque
+        // es lo que se usaría para cualquier archivo local que no sea de
+        // audio puro.
+        for url in urls.reversed() {
+            playlistStore.add(urlString: url.path, quality: quality)
+        }
+        urlText = first.path
+        play()
     }
 
     /// Used by the popup's header play button: plays the typed URL if there
@@ -525,17 +590,44 @@ final class PlayerViewModel: ObservableObject {
     var currentlyPlayingHasVideo: Bool {
         guard let id = currentlyPlayingItemID else { return false }
         guard let item = playlistStore.items.first(where: { $0.id == id }) else { return false }
-        return item.quality != .audioOnly
+        // No basta con mirar `item.quality`: puede haber quedado
+        // desactualizada para un archivo de audio local (ver
+        // `PlaylistItem.isLocalAudioFile`, la fuente de verdad real).
+        return item.quality != .audioOnly && !item.isLocalAudioFile
     }
 
-    /// URL de la miniatura de YouTube del ítem actualmente en reproducción,
-    /// usada como carátula cuando se reproduce en modo "Solo audio". `nil`
-    /// si la URL no es de YouTube o no se pudo extraer el video ID.
+    /// URL de la carátula del ítem actualmente en reproducción, usada como
+    /// imagen cuando se reproduce en modo "Solo audio": la miniatura de
+    /// YouTube si es un enlace de YouTube, o un archivo de imagen local con
+    /// el mismo nombre que el archivo de audio si es un archivo local (p.ej.
+    /// "cancion.mp3" + "cancion.jpg" en la misma carpeta). `nil` si no
+    /// aplica ninguno de los dos casos.
     var currentlyPlayingThumbnailURL: URL? {
         guard let id = currentlyPlayingItemID else { return nil }
         guard let item = playlistStore.items.first(where: { $0.id == id }) else { return nil }
-        guard let videoID = PlaylistStore.youTubeVideoID(from: item.urlString) else { return nil }
-        return URL(string: "https://img.youtube.com/vi/\(videoID)/hqdefault.jpg")
+        if let videoID = PlaylistStore.youTubeVideoID(from: item.urlString) {
+            return URL(string: "https://img.youtube.com/vi/\(videoID)/hqdefault.jpg")
+        }
+        return Self.localCoverArtURL(forFileAt: item.urlString)
+    }
+
+    /// Extensiones de imagen habituales para carátulas, probadas en orden.
+    private static let coverArtExtensions = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "tiff"]
+
+    /// Busca, junto a un archivo de audio local, una imagen con el mismo
+    /// nombre base (sin extensión) en la misma carpeta.
+    private static func localCoverArtURL(forFileAt path: String) -> URL? {
+        guard path.hasPrefix("/") else { return nil }
+        let fileURL = URL(fileURLWithPath: path)
+        let directory = fileURL.deletingLastPathComponent()
+        let baseName = fileURL.deletingPathExtension().lastPathComponent
+        for ext in coverArtExtensions {
+            let candidate = directory.appendingPathComponent(baseName).appendingPathExtension(ext)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                return candidate
+            }
+        }
+        return nil
     }
 
     func toggleFullscreen() {
@@ -557,6 +649,7 @@ final class PlayerViewModel: ObservableObject {
     /// `terminationHandler` que ya maneja el cierre manual de la ventana de
     /// mpv o el fin natural de la reproducción.
     func stop() {
+        didStopExplicitly = true
         MPVLauncher.terminateSession()
     }
 

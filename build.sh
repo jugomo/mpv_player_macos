@@ -6,6 +6,23 @@ cd "$(dirname "$0")"
 APP_NAME="MpvPlayerUI"
 BUNDLE="${APP_NAME}.app"
 
+# Identidad de firma para todo el bundle (la app y cada binario vendorizado
+# dentro: mpv y sus dylibs, yt-dlp, deno, el proveedor de PO Token…). Por
+# defecto ad-hoc ("-"), como siempre. Problema conocido de firmar ad-hoc: al
+# no tener una identidad estable (sin certificado, cada firma es distinta),
+# macOS trata cada reconstrucción como "una app distinta" en su base de
+# permisos (Ajustes > Privacidad y seguridad > Archivos y carpetas): hay que
+# volver a conceder acceso a archivos locales cada vez que se reconstruye,
+# aunque ya se hubiera concedido antes.
+#
+# Con un certificado de firma de código estable —uno autofirmado creado una
+# sola vez en Acceso a Llaveros ("Asistente de certificados > Crear un
+# certificado…", tipo "Firma de código"), o uno de pago de Apple Developer
+# Program— los permisos concedidos sobreviven a futuras reconstrucciones,
+# porque la identidad ya no cambia entre ellas:
+#   CODESIGN_IDENTITY="Mi Certificado" ./build.sh
+CODESIGN_IDENTITY="${CODESIGN_IDENTITY:--}"
+
 echo "==> Compilando en modo release…"
 swift build -c release
 
@@ -90,9 +107,9 @@ if [ "$FROM_ZIP" -eq 1 ]; then
     unzip -q -o "$DEPS_ZIP" -d "${BUNDLE}/Contents/Resources"
     chmod +x "${BUNDLE}/Contents/Resources/bin/"*
     find "${BUNDLE}/Contents/Resources/bin" "${BUNDLE}/Contents/Resources/lib" -type f \
-        -exec codesign --force --sign - {} \;
+        -exec codesign --force --sign "$CODESIGN_IDENTITY" {} \;
 elif [ -n "$MPV_SOURCE" ]; then
-    python3 scripts/vendor_mpv.py "$MPV_SOURCE" "${BUNDLE}/Contents/Resources"
+    python3 scripts/vendor_mpv.py "$MPV_SOURCE" "${BUNDLE}/Contents/Resources" "$CODESIGN_IDENTITY"
 else
     echo "Error: no se encontró mpv instalado en esta máquina; hace falta para vendorizarlo en el bundle. Alternativas:" >&2
     echo "  - Homebrew: 'brew install mpv' (si tu macOS/arquitectura no tiene bottle precompilado, prueba 'brew install mpv --build-from-source', requiere Xcode Command Line Tools)" >&2
@@ -231,16 +248,20 @@ rm -rf "$PLUGIN_DEST"
 mkdir -p "$PLUGIN_DEST"
 unzip -q -o "$BGUTIL_PLUGIN_CACHE" -d "$PLUGIN_DEST"
 
-echo "==> Firmando ad-hoc…"
-codesign --force --sign - "${BUNDLE}/Contents/Resources/bin/yt-dlp"
+if [ "$CODESIGN_IDENTITY" = "-" ]; then
+    echo "==> Firmando ad-hoc…"
+else
+    echo "==> Firmando con '${CODESIGN_IDENTITY}'…"
+fi
+codesign --force --sign "$CODESIGN_IDENTITY" "${BUNDLE}/Contents/Resources/bin/yt-dlp"
 if [ -x "${BUNDLE}/Contents/Resources/bin/deno" ]; then
-    codesign --force --sign - "${BUNDLE}/Contents/Resources/bin/deno"
+    codesign --force --sign "$CODESIGN_IDENTITY" "${BUNDLE}/Contents/Resources/bin/deno"
 fi
 if [ -d "${BUNDLE}/Contents/Resources/bgutil-provider" ]; then
     find "${BUNDLE}/Contents/Resources/bgutil-provider" -type f \( -name "*.node" -o -name "*.dylib" \) \
-        -exec codesign --force --sign - {} \;
+        -exec codesign --force --sign "$CODESIGN_IDENTITY" {} \;
 fi
-codesign --force --deep --sign - "$BUNDLE"
+codesign --force --deep --sign "$CODESIGN_IDENTITY" "$BUNDLE"
 
 echo "==> Listo: $(pwd)/${BUNDLE}"
 echo

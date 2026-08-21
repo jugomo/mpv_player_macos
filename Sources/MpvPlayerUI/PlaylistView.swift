@@ -53,32 +53,35 @@ struct PlaylistView: View {
                 List {
                     ForEach(store.items) { (item: PlaylistItem) in
                         let isPlaying = item.id == viewModel.currentlyPlayingItemID
-                        HStack(alignment: .top, spacing: 10) {
+                        HStack(alignment: .center, spacing: 10) {
+                            // Origen del arrastre para reordenar: antes toda
+                            // la celda lo era, lo que además le ganaba el
+                            // gesto al swipe-to-reveal de abajo (dos
+                            // reconocedores de gestos compitiendo por el
+                            // mismo área, y el del swipe perdía). Restringido
+                            // solo a este icono con `.draggable`/
+                            // `.dropDestination` en vez del `.onMove` de
+                            // toda la fila.
                             Image(systemName: "line.3.horizontal")
                                 .foregroundStyle(.secondary)
                                 .font(.callout)
-                                .padding(.top, 4)
                                 .help(loc.t(.dragToReorderTooltip))
-
-                            Button {
-                                viewModel.play(item: item)
-                                onItemPlayed?()
-                            } label: {
-                                Image(systemName: "play.circle.fill")
-                                    .font(.title2)
-                            }
-                            .buttonStyle(.borderless)
-                            .help(loc.t(.playTooltip))
+                                .draggable(item.id.uuidString)
 
                             VStack(alignment: .leading, spacing: 6) {
                                 HStack(spacing: 4) {
+                                    Image(systemName: item.isLocalFile ? "folder" : "link")
+                                        .foregroundStyle(.secondary)
+                                        .font(.caption)
+                                        .help(loc.t(item.isLocalFile ? .localFileItemTooltip : .urlItemTooltip))
+                                    Text(item.title ?? item.urlString)
+                                        .fontWeight(isPlaying ? .semibold : .regular)
                                     if isPlaying {
+                                        Spacer(minLength: 4)
                                         Image(systemName: "speaker.wave.2.fill")
                                             .foregroundStyle(Color.accentColor)
                                             .font(.caption)
                                     }
-                                    Text(item.title ?? item.urlString)
-                                        .fontWeight(isPlaying ? .semibold : .regular)
                                 }
                                 .contentShape(Rectangle())
                                 .onTapGesture(count: 2) {
@@ -87,7 +90,10 @@ struct PlaylistView: View {
                                 }
                                 .help(loc.t(.doubleClickToPlay))
 
-                                HStack(spacing: 8) {
+                                // La calidad solo tiene sentido para un
+                                // stream remoto (yt-dlp elige el formato);
+                                // un archivo local se reproduce tal cual.
+                                if !item.isLocalFile {
                                     Picker("", selection: qualityBinding(for: item)) {
                                         ForEach(VideoQuality.allCases) { quality in
                                             Text(quality.displayName(in: loc.language)).tag(quality)
@@ -96,24 +102,6 @@ struct PlaylistView: View {
                                     .labelsHidden()
                                     .frame(width: 120)
                                     .help(loc.t(.qualityTooltip))
-
-                                    Spacer()
-
-                                    Button {
-                                        copyToClipboard(item.urlString)
-                                    } label: {
-                                        Image(systemName: "doc.on.doc")
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .help(loc.t(.copyUrlTooltip))
-
-                                    Button {
-                                        store.remove(item)
-                                    } label: {
-                                        Image(systemName: "trash")
-                                    }
-                                    .buttonStyle(.borderless)
-                                    .help(loc.t(.removeFromPlaylistTooltip))
                                 }
                             }
                         }
@@ -122,23 +110,69 @@ struct PlaylistView: View {
                         .padding(.horizontal, 4)
                         .background(isPlaying ? Color.accentColor.opacity(0.15) : Color.clear)
                         .cornerRadius(4)
-                    }
-                    .onMove { source, destination in
-                        store.move(fromOffsets: source, toOffset: destination)
+                        // Copiar/eliminar ya no son botones siempre visibles:
+                        // se revelan deslizando la fila hacia la izquierda,
+                        // como en cualquier lista de iOS/macOS.
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) {
+                                store.remove(item)
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .accessibilityLabel(loc.t(.removeFromPlaylistTooltip))
+
+                            Button {
+                                copyToClipboard(item.urlString)
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                            }
+                            .accessibilityLabel(loc.t(.copyUrlTooltip))
+                            .tint(.blue)
+                        }
+                        .dropDestination(for: String.self) { draggedIDs, _ in
+                            handleReorderDrop(draggedIDs: draggedIDs, onto: item)
+                        }
                     }
                 }
                 .listStyle(.inset)
+                // El fondo propio del List es opaco y taparía por completo
+                // el material translúcido de `PlaylistBackground` puesto
+                // detrás de toda la vista.
+                .scrollContentBackground(.hidden)
             }
         }
         .padding(16)
         .frame(minWidth: isDocked ? 260 : 420, idealWidth: isDocked ? 320 : 460, minHeight: 320, idealHeight: 480)
+        .background(PlaylistBackground(cornerRadius: isDocked ? Self.dockedCornerRadius : 0))
     }
+
+    /// Radio de esquina de la ventana principal (`NSPopover`), para que la
+    /// playlist acoplada luzca como una extensión de la misma ventana en vez
+    /// de una pieza aparte. AppKit no expone ese radio como una constante
+    /// pública consultable, así que se replica a mano con el valor ajustado
+    /// visualmente para que coincida con el de la ventana principal.
+    private static let dockedCornerRadius: CGFloat = 20
 
     private func qualityBinding(for item: PlaylistItem) -> Binding<VideoQuality> {
         Binding(
             get: { store.items.first(where: { $0.id == item.id })?.quality ?? item.quality },
             set: { store.updateQuality(for: item, quality: $0) }
         )
+    }
+
+    /// Reordena tras soltar sobre `item` el ítem arrastrado desde el icono
+    /// de otra fila (ver `.draggable`/`.dropDestination` más arriba, que
+    /// reemplazan al `.onMove` de toda la celda). El destino replica el
+    /// mismo criterio que usaría `List.onMove`: antes del soltado si viene
+    /// de más abajo, después si viene de más arriba.
+    private func handleReorderDrop(draggedIDs: [String], onto item: PlaylistItem) -> Bool {
+        guard let idString = draggedIDs.first,
+              let sourceIndex = store.items.firstIndex(where: { $0.id.uuidString == idString }),
+              let targetIndex = store.items.firstIndex(where: { $0.id == item.id }),
+              sourceIndex != targetIndex else { return false }
+        let destination = sourceIndex < targetIndex ? targetIndex + 1 : targetIndex
+        store.move(fromOffsets: IndexSet(integer: sourceIndex), toOffset: destination)
+        return true
     }
 
     private func copyToClipboard(_ text: String) {
@@ -171,5 +205,35 @@ struct PlaylistView: View {
         } catch {
             errorMessage = loc.t(.importFailedPrefix) + error.localizedDescription
         }
+    }
+}
+
+/// Fondo de la ventana de playlist: el mismo material translúcido que usa
+/// la ventana principal (`NSPopover`, cuyo fondo por defecto ya es de tipo
+/// `.popover`), que además se atenúa solo al perder el foco gracias a
+/// `state: .followsWindowActiveState` — sin nada más que hacer aquí, es
+/// el propio `NSVisualEffectView` quien seguirá el estado de la ventana.
+///
+/// Acoplada, además redondea las cuatro esquinas con el mismo radio que la
+/// ventana principal: su borde superior está fijo a un margen de la barra
+/// de menús (ver `AppDelegate.applyDockedFrame`) en vez de anclado a la
+/// ventana principal, así que ningún borde de la playlist coincide siempre
+/// con uno de la ventana principal — no hay ya ninguna esquina que deba
+/// quedar cuadrada a propósito para "encajar" con ella.
+private struct PlaylistBackground: NSViewRepresentable {
+    var cornerRadius: CGFloat
+
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .popover
+        view.blendingMode = .withinWindow
+        view.state = .followsWindowActiveState
+        view.wantsLayer = true
+        return view
+    }
+
+    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
+        nsView.layer?.cornerRadius = cornerRadius
+        nsView.layer?.masksToBounds = cornerRadius > 0
     }
 }

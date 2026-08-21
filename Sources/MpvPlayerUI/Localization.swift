@@ -40,6 +40,8 @@ enum LKey {
     case closeWindowsOnPlayToggleLabel, closeWindowsOnPlayHint
     case fullscreenTooltip, volumeTooltip, vuMeterToggleTooltip, alwaysOnTopTooltip
     case playLinkLabel, playLinkTooltip
+    case openLocalFileLabel, openLocalFileTooltip
+    case localFileItemTooltip, urlItemTooltip
     case showDescriptionTooltip
     case dockPlaylistTooltip, undockPlaylistTooltip
     case showPlaylistTooltip, hidePlaylistTooltip
@@ -197,6 +199,12 @@ final class LocalizationManager: ObservableObject {
 
         .playLinkLabel: ("Reproducir enlace", "Play link"),
         .playLinkTooltip: ("Clic para mostrar/ocultar los controles de reproducción", "Click to show/hide the playback controls"),
+
+        .openLocalFileLabel: ("Abrir archivo local", "Open local file"),
+        .openLocalFileTooltip: ("Clic para abrir un archivo multimedia del ordenador", "Click to open a media file from this computer"),
+
+        .localFileItemTooltip: ("Archivo local", "Local file"),
+        .urlItemTooltip: ("Enlace URL", "URL link"),
 
         .showDescriptionTooltip: ("Clic para mostrar/ocultar la descripción", "Click to show/hide the description"),
 

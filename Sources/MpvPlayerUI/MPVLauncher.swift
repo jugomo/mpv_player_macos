@@ -241,10 +241,21 @@ enum MPVLauncher {
         onAudioLevelsChanged: ((Double, Double) -> Void)? = nil
     ) throws {
         let trimmed = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: trimmed),
-              let scheme = url.scheme,
-              (scheme == "http" || scheme == "https"),
-              url.host != nil else {
+        // Un enlace remoto necesita esquema http(s) y host; un archivo local
+        // se identifica por ruta absoluta sin esquema (no "file://": eso sí
+        // llevaría "://" y activaría el ytdl_hook de mpv, que lo trataría
+        // como una URL más e intentaría resolverla con yt-dlp antes de
+        // rendirse y caer al demuxer normal, con el consiguiente retraso al
+        // abrir). Ver `PlayerViewModel.playLocalFile`, que ya entrega la
+        // ruta en este formato.
+        let isRemoteURL: Bool
+        if let url = URL(string: trimmed), let scheme = url.scheme {
+            isRemoteURL = (scheme == "http" || scheme == "https") && url.host != nil
+        } else {
+            isRemoteURL = false
+        }
+        let isLocalFile = trimmed.hasPrefix("/") && FileManager.default.fileExists(atPath: trimmed)
+        guard isRemoteURL || isLocalFile else {
             throw MPVLauncherError.invalidURL
         }
 
