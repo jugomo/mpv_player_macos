@@ -2,8 +2,9 @@ import Foundation
 
 /// Una actualización disponible para una herramienta vendorizada (ver
 /// `build.sh`): versión que hay empaquetada en este bundle vs. la última
-/// publicada aguas arriba.
-struct AvailableUpdate: Equatable, Identifiable {
+/// publicada aguas arriba. `Codable` para poder cachearla entre lanzamientos
+/// (ver `UpdateChecker`).
+struct AvailableUpdate: Equatable, Identifiable, Codable {
     let tool: String
     let current: String
     let latest: String
@@ -34,24 +35,77 @@ final class UpdateChecker: ObservableObject {
 
     private var hasChecked = false
 
-    private init() {}
+    /// Aunque las dos peticiones HTTP van en segundo plano y no bloquean
+    /// `applicationDidFinishLaunching`, medido con Instruments (plantilla
+    /// "App Launch" + Time Profiler) se veía un hueco de ~4.5s justo tras el
+    /// arranque donde NINGÚN hilo del proceso llegaba siquiera a
+    /// programarse — macOS suprime agresivamente el trabajo en QoS
+    /// `.background` durante los primeros segundos tras lanzar un proceso —
+    /// seguido de una ráfaga (resolución DNS, caché sqlite de URLSession,
+    /// parseo de JSON) al completarse por fin las peticiones. Repetir esto
+    /// en cada lanzamiento —antes se hacía siempre, `hasChecked` era una
+    /// bandera solo en memoria— es un coste real y innecesario, y además
+    /// bombardea la API de GitHub/Homebrew sin motivo. Cachear el resultado
+    /// y el momento del último chequeo en UserDefaults reduce las peticiones
+    /// de red a como mucho una vez al día, sin perder la utilidad de la
+    /// comprobación (yt-dlp puede cambiar cada semana, un día de margen es
+    /// sobrado).
+    private static let checkIntervalSeconds: TimeInterval = 24 * 60 * 60
+    private static let lastCheckDateKey = "UpdateChecker.lastCheckDate"
+    private static let cachedUpdatesKey = "UpdateChecker.cachedUpdates"
 
-    /// Llamar una vez al lanzar la app (ver AppDelegate). No bloquea el
-    /// arranque: corre en segundo plano y tarda lo que tarden dos peticiones
-    /// HTTP cortas (con timeout de 8s cada una). Si no hay red, o la API de
-    /// GitHub/Homebrew no responde, simplemente no se marca ninguna
-    /// actualización — no es un error visible para el usuario.
+    private init() {
+        availableUpdates = Self.loadCachedUpdates()
+    }
+
+    /// Llamar una vez al lanzar la app (ver AppDelegate). Si ya se comprobó
+    /// hace menos de `checkIntervalSeconds`, no hace ninguna petición de red
+    /// y se queda con lo que ya había en caché (cargado en `init`), así que
+    /// la mayoría de lanzamientos no tocan la red para nada. No bloquea el
+    /// arranque en ningún caso: cuando sí corre, va en segundo plano y tarda
+    /// lo que tarden dos peticiones HTTP cortas (con timeout de 8s cada
+    /// una). Si no hay red, o la API de GitHub/Homebrew no responde,
+    /// simplemente no se marca ninguna actualización — no es un error
+    /// visible para el usuario.
     func checkForUpdatesInBackground() {
         guard !hasChecked else { return }
         hasChecked = true
-        Task.detached(priority: .background) {
+        let lastCheck = UserDefaults.standard.object(forKey: Self.lastCheckDateKey) as? Date
+        if let lastCheck, Date().timeIntervalSince(lastCheck) < Self.checkIntervalSeconds {
+            return
+        }
+        // `.utility` en vez de `.background`: sigue sin competir por
+        // prioridad con nada del arranque en sí (que ya ha terminado para
+        // cuando esto se dispara), pero evita la supresión más agresiva que
+        // aplica macOS a `.background` justo tras lanzar el proceso — ver
+        // comentario de más arriba.
+        Task.detached(priority: .utility) {
             async let ytdlp = Self.checkYtdlp()
             async let mpv = Self.checkMpv()
             let results = await [ytdlp, mpv].compactMap { $0 }
-            guard !results.isEmpty else { return }
             await MainActor.run {
                 UpdateChecker.shared.availableUpdates = results
+                Self.persist(results)
             }
+        }
+    }
+
+    private static func loadCachedUpdates() -> [AvailableUpdate] {
+        guard let data = UserDefaults.standard.data(forKey: cachedUpdatesKey),
+              let decoded = try? JSONDecoder().decode([AvailableUpdate].self, from: data) else { return [] }
+        return decoded
+    }
+
+    /// Persiste tanto el resultado (incluso vacío: si ya no hay actualización
+    /// pendiente, la próxima vez tampoco debe mostrarse una vieja) como la
+    /// fecha del chequeo, esta última incluso si `results` viene vacío por un
+    /// fallo de red — reintentar en cada lanzamiento mientras no hay red
+    /// reproduciría exactamente el mismo hueco de varios segundos que esto
+    /// corrige; perder como mucho un día de margen en detectarlo no lo justifica.
+    private static func persist(_ results: [AvailableUpdate]) {
+        UserDefaults.standard.set(Date(), forKey: lastCheckDateKey)
+        if let data = try? JSONEncoder().encode(results) {
+            UserDefaults.standard.set(data, forKey: cachedUpdatesKey)
         }
     }
 
