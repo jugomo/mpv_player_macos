@@ -19,10 +19,9 @@ struct AvailableUpdate: Equatable, Identifiable, Codable {
 /// `AboutView`), porque tanto mpv como yt-dlp aquí no se instalan sueltos en
 /// el sistema sino que van empaquetados dentro de la app — "actualizar"
 /// significa volver a correr `./build.sh` (que sí trae siempre la última
-/// yt-dlp y la mpv que haya instalada en esa máquina) y reinstalar el
-/// resultado.
+/// yt-dlp y la mpv que haya instalada en esa máquina).
 ///
-/// yt-dlp es el que de verdad importa aquí: YouTube le cambia las reglas casi
+/// yt-dlp es el que de verdad importa aquí:
 /// semana a semana (ver historial de `MPVLauncher.applySessionSettings`), así
 /// que una copia vieja es la causa más probable de que la reproducción
 /// empiece a fallar con 403. mpv cambia con mucha menos frecuencia, pero se
@@ -92,7 +91,8 @@ final class UpdateChecker: ObservableObject {
 
     private static func loadCachedUpdates() -> [AvailableUpdate] {
         guard let data = UserDefaults.standard.data(forKey: cachedUpdatesKey),
-              let decoded = try? JSONDecoder().decode([AvailableUpdate].self, from: data) else { return [] }
+            let decoded = try? JSONDecoder().decode([AvailableUpdate].self, from: data)
+        else { return [] }
         return decoded
     }
 
@@ -110,10 +110,13 @@ final class UpdateChecker: ObservableObject {
     }
 
     private static func checkYtdlp() async -> AvailableUpdate? {
-        guard let path = DependencyChecker.bundledExecutable(named: "yt-dlp") ?? DependencyChecker.findExecutable(named: "yt-dlp"),
-              let current = runVersion(at: path)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              let latest = await latestGitHubReleaseTag(repo: "yt-dlp/yt-dlp"),
-              latest != current else { return nil }
+        guard
+            let path = DependencyChecker.bundledExecutable(named: "yt-dlp")
+                ?? DependencyChecker.findExecutable(named: "yt-dlp"),
+            let current = runVersion(at: path)?.trimmingCharacters(in: .whitespacesAndNewlines),
+            let latest = await latestGitHubReleaseTag(repo: "yt-dlp/yt-dlp"),
+            latest != current
+        else { return nil }
         return AvailableUpdate(
             tool: "yt-dlp",
             current: current,
@@ -123,11 +126,14 @@ final class UpdateChecker: ObservableObject {
     }
 
     private static func checkMpv() async -> AvailableUpdate? {
-        guard let path = DependencyChecker.bundledExecutable(named: "mpv") ?? DependencyChecker.findExecutable(named: "mpv"),
-              let rawOutput = runVersion(at: path),
-              let current = parseMpvVersion(from: rawOutput),
-              let latest = await latestHomebrewFormulaVersion(formula: "mpv"),
-              latest != current else { return nil }
+        guard
+            let path = DependencyChecker.bundledExecutable(named: "mpv")
+                ?? DependencyChecker.findExecutable(named: "mpv"),
+            let rawOutput = runVersion(at: path),
+            let current = parseMpvVersion(from: rawOutput),
+            let latest = await latestHomebrewFormulaVersion(formula: "mpv"),
+            latest != current
+        else { return nil }
         return AvailableUpdate(
             tool: "mpv",
             current: current,
@@ -143,7 +149,8 @@ final class UpdateChecker: ObservableObject {
     /// la primera "v" del texto: la propia palabra "mpv" ya contiene una.
     private static func parseMpvVersion(from rawOutput: String) -> String? {
         guard let firstLine = rawOutput.split(separator: "\n").first else { return nil }
-        for word in firstLine.split(separator: " ") where word.first == "v" && word.dropFirst().first?.isNumber == true {
+        for word in firstLine.split(separator: " ")
+        where word.first == "v" && word.dropFirst().first?.isNumber == true {
             return String(word.dropFirst())
         }
         return nil
@@ -168,13 +175,17 @@ final class UpdateChecker: ObservableObject {
     }
 
     private static func latestGitHubReleaseTag(repo: String) async -> String? {
-        guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest") else { return nil }
+        guard let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest") else {
+            return nil
+        }
         guard let json = await fetchJSON(url) else { return nil }
         return json["tag_name"] as? String
     }
 
     private static func latestHomebrewFormulaVersion(formula: String) async -> String? {
-        guard let url = URL(string: "https://formulae.brew.sh/api/formula/\(formula).json") else { return nil }
+        guard let url = URL(string: "https://formulae.brew.sh/api/formula/\(formula).json") else {
+            return nil
+        }
         guard let json = await fetchJSON(url) else { return nil }
         let versions = json["versions"] as? [String: Any]
         return versions?["stable"] as? String

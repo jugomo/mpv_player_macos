@@ -61,6 +61,17 @@ struct PlayerView: View {
                         .buttonStyle(.plain)
                         .help(loc.t(.playLinkTooltip))
                         .accessibilityLabel(loc.t(.playLinkLabel))
+
+                        Button {
+                            viewModel.onOpenSearchRequested?()
+                        } label: {
+                            Image(systemName: "magnifyingglass")
+                                .font(.subheadline)
+                                .foregroundStyle(viewModel.isSearchVisible ? Color.accentColor : Color.primary)
+                        }
+                        .buttonStyle(.plain)
+                        .help(viewModel.isSearchVisible ? loc.t(.hideSearchTooltip) : loc.t(.showSearchTooltip))
+                        .accessibilityLabel(loc.t(.searchLabel))
                     }
                 }
 

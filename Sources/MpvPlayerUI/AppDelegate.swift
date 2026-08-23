@@ -29,6 +29,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let playlistStore = PlaylistStore()
     private let downloadManager = DownloadManager()
     private lazy var viewModel = PlayerViewModel(playlistStore: playlistStore)
+    /// Ruta de yt-dlp pedida de forma perezosa desde `viewModel.status`, no
+    /// copiada de antemano: puede cambiar tras instalar yt-dlp con la
+    /// ventana de búsqueda ya abierta.
+    private lazy var searchViewModel = SearchViewModel(ytdlpPath: { [weak self] in
+        self?.viewModel.status.ytdlpPath
+    })
+    private var searchWindow: NSWindow?
+    private var searchWindowCloseObserver: NSObjectProtocol?
     private var playlistWindow: NSWindow?
     private var playlistHostingController: NSHostingController<PlaylistView>?
     private var isPlaylistDocked = false
@@ -54,13 +62,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv player UI")
+            button.image = NSImage(
+                systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv player UI")
             button.action = #selector(handleStatusItemClick(_:))
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
 
-        let playerHostingController = NSHostingController(rootView: PlayerView(viewModel: viewModel))
+        let playerHostingController = NSHostingController(
+            rootView: PlayerView(viewModel: viewModel))
         // Sin esto, el popover se queda con el tamaño fijo de su primer
         // layout: si luego el título pasa a ocupar varias líneas (o aparece
         // la seek bar), SwiftUI comprime el contenido para caber en ese
@@ -86,6 +96,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         viewModel.onOpenPlaylistRequested = { [weak self] in
             self?.togglePlaylistVisibility()
+        }
+        viewModel.onOpenSearchRequested = { [weak self] in
+            self?.toggleSearchVisibility()
         }
         viewModel.onShowTitleToastRequested = { [weak self] title in
             self?.showTitleToast(title)
@@ -117,8 +130,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         focusLossObservers = [
-            NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: nil, queue: .main, using: handler),
-            NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main, using: handler),
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.didResignKeyNotification, object: nil, queue: .main,
+                using: handler),
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didResignActiveNotification, object: nil, queue: .main,
+                using: handler),
         ]
     }
 
@@ -126,7 +143,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard PlaybackWindowSettingsManager.shared.closeWindowsOnPlay else { return }
         guard popover.isShown || playlistWindow?.isVisible == true else { return }
         let keyWindow = NSApp.keyWindow
-        let stillFocused = keyWindow != nil && (keyWindow === mainPopoverWindow() || keyWindow === playlistWindow)
+        let stillFocused =
+            keyWindow != nil && (keyWindow === mainPopoverWindow() || keyWindow === playlistWindow)
         guard !stillFocused else { return }
         if popover.isShown { closePopover() }
         if playlistWindow?.isVisible == true { hidePlaylistWindow() }
@@ -157,11 +175,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showIdleIcon() {
-        statusItem.button?.image = NSImage(systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv player UI")
+        statusItem.button?.image = NSImage(
+            systemSymbolName: Self.idleIconName, accessibilityDescription: "mpv player UI")
     }
 
     private func showPlayingIcon() {
-        statusItem.button?.image = NSImage(systemSymbolName: Self.statusIconName, accessibilityDescription: "mpv player UI")
+        statusItem.button?.image = NSImage(
+            systemSymbolName: Self.statusIconName, accessibilityDescription: "mpv player UI")
     }
 
     /// Sustituye el icono normal por uno giratorio mientras mpv/yt-dlp
@@ -171,7 +191,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showLoadingSpinIcon() {
         guard let button = statusItem.button, !isShowingLoadingIcon else { return }
         isShowingLoadingIcon = true
-        button.image = NSImage(systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Loading")
+        button.image = NSImage(
+            systemSymbolName: "arrow.triangle.2.circlepath", accessibilityDescription: "Loading")
         button.wantsLayer = true
         // El layer de respaldo de un NSView ancla en la esquina (0,0), no en
         // el centro (0.5,0.5) como un CALayer normal: girar `rotation.z` sin
@@ -209,7 +230,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard pauseBlinkTimer == nil else { return }
         isShowingPausedIcon = false
         showPlayingIcon()
-        pauseBlinkTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        pauseBlinkTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) {
+            [weak self] _ in
             // Timer.scheduledTimer always fires on the run loop it was scheduled
             // from — the main one here, since this whole class is @MainActor.
             assert(Thread.isMainThread)
@@ -337,9 +359,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ) { [weak self, weak window] _ in
                 guard let self, let window, !self.isApplyingDockedFrame else { return }
                 if self.isPlaylistDocked {
-                    PlaybackWindowSettingsManager.shared.dockedPlaylistHeight = Double(window.frame.height)
+                    PlaybackWindowSettingsManager.shared.dockedPlaylistHeight = Double(
+                        window.frame.height)
                 } else {
-                    PlaybackWindowSettingsManager.shared.floatingPlaylistHeight = Double(window.frame.height)
+                    PlaybackWindowSettingsManager.shared.floatingPlaylistHeight = Double(
+                        window.frame.height)
                 }
             }
             // Posición de la playlist FLOTANTE (anclada no tiene sentido:
@@ -348,7 +372,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             playlistMoveObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.didMoveNotification, object: window, queue: .main
             ) { [weak self, weak window] _ in
-                guard let self, let window, !self.isApplyingDockedFrame, !self.isPlaylistDocked else { return }
+                guard let self, let window, !self.isApplyingDockedFrame, !self.isPlaylistDocked
+                else { return }
                 PlaybackWindowSettingsManager.shared.floatingPlaylistOrigin = window.frame.origin
             }
         } else {
@@ -358,14 +383,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let window = playlistWindow else { return }
         NSApp.activate(ignoringOtherApps: true)
 
-        window.styleMask = docked ? [.resizable] : [.titled, .closable, .resizable, .miniaturizable]
+        window.styleMask =
+            docked ? [.resizable] : [.titled, .closable, .resizable, .miniaturizable]
 
         if docked, let mainWindow = mainPopoverWindow() {
             window.isMovable = false
             // Ancho fijo (min == max, así AppKit ni siquiera ofrece el
             // cursor de resize en los bordes izquierdo/derecho), alto libre
             // dentro de un rango razonable.
-            window.minSize = NSSize(width: dockedPlaylistWidth, height: Self.minDockedPlaylistHeight)
+            window.minSize = NSSize(
+                width: dockedPlaylistWidth, height: Self.minDockedPlaylistHeight)
             window.maxSize = NSSize(width: dockedPlaylistWidth, height: .greatestFiniteMagnitude)
             // Ventana no opaca para poder redondear sus esquinas a mano (ver
             // `PlaylistView`, que dibuja el fondo con el radio real): un
@@ -390,7 +417,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // re-layout real ya con la ventana en pantalla — el mismo
                 // camino que sigue un redimensionado manual (que sí funciona).
                 DispatchQueue.main.async { [weak self, weak window] in
-                    guard let self, let window, let mainWindow = self.mainPopoverWindow() else { return }
+                    guard let self, let window, let mainWindow = self.mainPopoverWindow() else {
+                        return
+                    }
                     self.applyDockedFrame(to: window, relativeTo: mainWindow)
                     self.animateRollOutReveal(on: window)
                 }
@@ -399,7 +428,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             stopObservingDockedMainWindow()
             window.isMovable = true
             window.minSize = Self.minFloatingPlaylistSize
-            window.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            window.maxSize = NSSize(
+                width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
             window.isOpaque = true
             window.backgroundColor = .windowBackgroundColor
             if modeChanged {
@@ -450,7 +480,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyDockedFrame(to window: NSWindow, relativeTo mainWindow: NSWindow) {
         let mainFrame = mainWindow.frame
-        let height = PlaybackWindowSettingsManager.shared.dockedPlaylistHeight.map { CGFloat($0) } ?? mainFrame.height
+        let height =
+            PlaybackWindowSettingsManager.shared.dockedPlaylistHeight.map { CGFloat($0) }
+            ?? mainFrame.height
 
         // El borde superior se fija siempre a `dockedTopMargin` de la barra
         // de menús (no de la ventana principal: eso es lo que se probó
@@ -482,12 +514,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         stopObservingDockedMainWindow()
         dockedMainWindow = mainWindow
         let handler: (Notification) -> Void = { [weak self] _ in
-            guard let self, self.isPlaylistDocked, let window = self.playlistWindow, let mainWindow = self.dockedMainWindow else { return }
+            guard let self, self.isPlaylistDocked, let window = self.playlistWindow,
+                let mainWindow = self.dockedMainWindow
+            else { return }
             self.applyDockedFrame(to: window, relativeTo: mainWindow)
         }
         dockedMainWindowObservers = [
-            NotificationCenter.default.addObserver(forName: NSWindow.didMoveNotification, object: mainWindow, queue: .main, using: handler),
-            NotificationCenter.default.addObserver(forName: NSWindow.didResizeNotification, object: mainWindow, queue: .main, using: handler),
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.didMoveNotification, object: mainWindow, queue: .main,
+                using: handler),
+            NotificationCenter.default.addObserver(
+                forName: NSWindow.didResizeNotification, object: mainWindow, queue: .main,
+                using: handler),
         ]
     }
 
@@ -546,7 +584,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func showSettingsWindow() {
         if settingsWindow == nil {
-            let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView()))
+            let window = NSWindow(
+                contentViewController: NSHostingController(rootView: SettingsView()))
             window.title = LocalizationManager.shared.t(.settings)
             window.styleMask = [.titled, .closable]
             window.isReleasedWhenClosed = false
@@ -555,6 +594,60 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         NSApp.activate(ignoringOtherApps: true)
         settingsWindow?.makeKeyAndOrderFront(nil)
+    }
+
+    /// Botón de la lupa en la ventana principal / opción "Buscar" del menú
+    /// contextual: si la ventana de búsqueda ya está visible la oculta, si
+    /// no la muestra.
+    private func toggleSearchVisibility() {
+        if searchWindow?.isVisible == true {
+            hideSearchWindow()
+        } else {
+            showSearchWindow()
+        }
+    }
+
+    private func hideSearchWindow() {
+        searchWindow?.orderOut(nil)
+        viewModel.isSearchVisible = false
+        searchViewModel.cancelInFlightSearch()
+    }
+
+    /// Ventana de búsqueda: a diferencia de la playlist, no se acopla a
+    /// la ventana principal ni persiste geometría entre lanzamientos
+    /// (los resultados son transitorios, no un artefacto que el usuario
+    /// quiera dejar fijo en pantalla) — sigue en cambio el mismo patrón
+    /// liviano que `showAboutWindow`/`showSettingsWindow`, solo que
+    /// redimensionable.
+    private func showSearchWindow() {
+        if searchWindow == nil {
+            let hostingController = NSHostingController(
+                rootView: SearchView(
+                    viewModel: searchViewModel,
+                    playerViewModel: viewModel,
+                    onResultPlayed: { [weak self] in
+                        if PlaybackWindowSettingsManager.shared.closeWindowsOnPlay {
+                            self?.hideSearchWindow()
+                        }
+                    }
+                )
+            )
+            let window = NSWindow(contentViewController: hostingController)
+            window.title = LocalizationManager.shared.t(.searchTitle)
+            window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
+            window.isReleasedWhenClosed = false
+            window.center()
+            searchWindowCloseObserver = NotificationCenter.default.addObserver(
+                forName: NSWindow.willCloseNotification, object: window, queue: .main
+            ) { [weak self] _ in
+                self?.viewModel.isSearchVisible = false
+                self?.searchViewModel.cancelInFlightSearch()
+            }
+            searchWindow = window
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        searchWindow?.makeKeyAndOrderFront(nil)
+        viewModel.isSearchVisible = true
     }
 
     /// Aviso "reproduciendo ahora" a nivel de macOS (no un OSD dentro de la
@@ -585,7 +678,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // acepta una anchura máxima propuesta, dejando que el texto largo
         // envuelva dentro de ese límite y que el corto siga ajustándose a
         // su contenido.
-        let fittingSize = hostingController.sizeThatFits(in: NSSize(width: 480, height: CGFloat.greatestFiniteMagnitude))
+        let fittingSize = hostingController.sizeThatFits(
+            in: NSSize(width: 480, height: CGFloat.greatestFiniteMagnitude))
         let margin: CGFloat = 10
         let origin = NSPoint(
             x: screen.visibleFrame.maxX - fittingSize.width - margin,
@@ -616,7 +710,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let handler: (NSEvent) -> Void = { [weak self] _ in
             self?.updateTitleToastHoverState()
         }
-        let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.mouseMoved], handler: handler)
+        let globalMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.mouseMoved], handler: handler)
         let localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.mouseMoved]) { event in
             handler(event)
             return event
@@ -655,17 +750,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func dismissTitleToast() {
         guard let window = titleToastWindow else { return }
         stopWatchingTitleToastHover()
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.3
-            window.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
-            DispatchQueue.main.async {
-                window.orderOut(nil)
-                if self?.titleToastWindow === window {
-                    self?.titleToastWindow = nil
+        NSAnimationContext.runAnimationGroup(
+            { context in
+                context.duration = 0.3
+                window.animator().alphaValue = 0
+            },
+            completionHandler: { [weak self] in
+                DispatchQueue.main.async {
+                    window.orderOut(nil)
+                    if self?.titleToastWindow === window {
+                        self?.titleToastWindow = nil
+                    }
                 }
-            }
-        })
+            })
     }
 
     @objc private func handleStatusItemClick(_ sender: NSStatusBarButton) {
@@ -679,17 +776,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showContextMenu() {
         let loc = LocalizationManager.shared
         let menu = NSMenu()
-        let playlistItem = NSMenuItem(title: loc.t(.playlist), action: #selector(openPlaylist), keyEquivalent: "")
-        playlistItem.image = NSImage(systemSymbolName: "music.note.list", accessibilityDescription: loc.t(.playlist))
+        let playlistItem = NSMenuItem(
+            title: loc.t(.playlist), action: #selector(openPlaylist), keyEquivalent: "")
+        playlistItem.image = NSImage(
+            systemSymbolName: "music.note.list", accessibilityDescription: loc.t(.playlist))
         menu.addItem(playlistItem)
-        let settingsItem = NSMenuItem(title: loc.t(.settings), action: #selector(openSettings), keyEquivalent: "")
-        settingsItem.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: loc.t(.settings))
+        let searchItem = NSMenuItem(
+            title: loc.t(.searchTitle), action: #selector(openSearch), keyEquivalent: "")
+        searchItem.image = NSImage(
+            systemSymbolName: "magnifyingglass", accessibilityDescription: loc.t(.searchTitle))
+        menu.addItem(searchItem)
+        let settingsItem = NSMenuItem(
+            title: loc.t(.settings), action: #selector(openSettings), keyEquivalent: "")
+        settingsItem.image = NSImage(
+            systemSymbolName: "gearshape", accessibilityDescription: loc.t(.settings))
         menu.addItem(settingsItem)
-        let helpItem = NSMenuItem(title: loc.t(.help), action: #selector(openHelp), keyEquivalent: "")
-        helpItem.image = NSImage(systemSymbolName: "questionmark.circle", accessibilityDescription: loc.t(.help))
+        let helpItem = NSMenuItem(
+            title: loc.t(.help), action: #selector(openHelp), keyEquivalent: "")
+        helpItem.image = NSImage(
+            systemSymbolName: "questionmark.circle", accessibilityDescription: loc.t(.help))
         menu.addItem(helpItem)
         menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: loc.t(.quit), action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(
+            title: loc.t(.quit), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.image = NSImage(systemSymbolName: "power", accessibilityDescription: loc.t(.quit))
         menu.addItem(quitItem)
         for item in menu.items {
@@ -702,6 +811,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openPlaylist() {
         showPlaylistWindow(docked: false)
+    }
+
+    @objc private func openSearch() {
+        showSearchWindow()
     }
 
     @objc private func openSettings() {
@@ -763,9 +876,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// del ícono en ese caso.
     private func repositionPopoverBelowStatusItem(_ sender: NSStatusBarButton) {
         guard let buttonWindow = sender.window,
-              let popoverWindow = popover.contentViewController?.view.window,
-              let screen = buttonWindow.screen ?? NSScreen.main else { return }
-        let buttonFrameOnScreen = buttonWindow.convertToScreen(sender.convert(sender.bounds, to: nil))
+            let popoverWindow = popover.contentViewController?.view.window,
+            let screen = buttonWindow.screen ?? NSScreen.main
+        else { return }
+        let buttonFrameOnScreen = buttonWindow.convertToScreen(
+            sender.convert(sender.bounds, to: nil))
         let popoverSize = popoverWindow.frame.size
         let idealX = buttonFrameOnScreen.midX - popoverSize.width / 2
         let minX = screen.visibleFrame.minX

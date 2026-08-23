@@ -54,6 +54,9 @@ enum LKey {
     case exportLogFailedPrefix, clearLogFailedPrefix
     case logTruncatedNoteFormat
     case updateAvailableFormat, updateAvailableSeeRelease
+    case searchTitle, searchPlaceholder, showSearchTooltip, hideSearchTooltip
+    case searchLabel, playSearchResultTooltip
+    case searchNeedsYtdlp, noSearchResults, searchTimedOut, searchFailedGeneric
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -73,7 +76,8 @@ final class LocalizationManager: ObservableObject {
 
     private init() {
         if let saved = UserDefaults.standard.string(forKey: Self.defaultsKey),
-           let lang = AppLanguage(rawValue: saved) {
+            let lang = AppLanguage(rawValue: saved)
+        {
             language = lang
         } else {
             let systemLanguageCode = Locale.current.language.languageCode?.identifier
@@ -107,8 +111,12 @@ final class LocalizationManager: ObservableObject {
 
         .mpvNotInstalled: ("mpv no está instalado", "mpv is not installed"),
         .ytdlpNotInstalled: ("yt-dlp no está instalado", "yt-dlp is not installed"),
-        .homebrewNotInstalledEither: ("Homebrew tampoco está instalado.", "Homebrew isn't installed either."),
-        .openTerminalToInstallHomebrew: ("Abrir Terminal para instalar Homebrew", "Open Terminal to install Homebrew"),
+        .homebrewNotInstalledEither: (
+            "Homebrew tampoco está instalado.", "Homebrew isn't installed either."
+        ),
+        .openTerminalToInstallHomebrew: (
+            "Abrir Terminal para instalar Homebrew", "Open Terminal to install Homebrew"
+        ),
         .installWithHomebrew: ("Instalar con Homebrew", "Install with Homebrew"),
 
         .aboutCredit: ("by ©jugomo 2006", "by ©jugomo 2006"),
@@ -158,13 +166,19 @@ final class LocalizationManager: ObservableObject {
         .copyUrlTooltip: ("Copiar URL al portapapeles", "Copy URL to clipboard"),
         .dragToReorderTooltip: ("Arrastra para reordenar", "Drag to reorder"),
         .removeFromPlaylistTooltip: ("Eliminar de la playlist", "Remove from playlist"),
-        .exportFailedPrefix: ("No se pudo exportar la playlist: ", "Could not export the playlist: "),
-        .importFailedPrefix: ("No se pudo importar la playlist: ", "Could not import the playlist: "),
+        .exportFailedPrefix: (
+            "No se pudo exportar la playlist: ", "Could not export the playlist: "
+        ),
+        .importFailedPrefix: (
+            "No se pudo importar la playlist: ", "Could not import the playlist: "
+        ),
 
         .mpvNotInstalledError: ("mpv no está instalado.", "mpv is not installed."),
         .installingPrefix: ("Instalando ", "Installing "),
         .installationCompleted: ("Instalación completada.", "Installation completed."),
-        .homebrewNotInstalledErrorDescription: ("Homebrew no está instalado.", "Homebrew is not installed."),
+        .homebrewNotInstalledErrorDescription: (
+            "Homebrew no está instalado.", "Homebrew is not installed."
+        ),
         .invalidURLError: ("La URL no es válida.", "The URL is not valid."),
         .mpvLaunchFailedPrefix: ("No se pudo iniciar mpv: ", "Could not start mpv: "),
 
@@ -198,20 +212,33 @@ final class LocalizationManager: ObservableObject {
         .fullscreenTooltip: ("Pantalla completa", "Fullscreen"),
         .alwaysOnTopTooltip: ("Mantener siempre encima", "Keep always on top"),
         .volumeTooltip: ("Volumen (solo esta reproducción)", "Volume (this playback only)"),
-        .vuMeterToggleTooltip: ("Clic para cambiar de estilo (digital/analógico)", "Click to switch style (digital/analog)"),
+        .vuMeterToggleTooltip: (
+            "Clic para cambiar de estilo (digital/analógico)",
+            "Click to switch style (digital/analog)"
+        ),
 
         .playLinkLabel: ("Reproducir enlace", "Play link"),
-        .playLinkTooltip: ("Clic para mostrar/ocultar los controles de reproducción", "Click to show/hide the playback controls"),
+        .playLinkTooltip: (
+            "Clic para mostrar/ocultar los controles de reproducción",
+            "Click to show/hide the playback controls"
+        ),
 
         .openLocalFileLabel: ("Abrir archivo local", "Open local file"),
-        .openLocalFileTooltip: ("Clic para abrir un archivo multimedia del ordenador", "Click to open a media file from this computer"),
+        .openLocalFileTooltip: (
+            "Clic para abrir un archivo multimedia del ordenador",
+            "Click to open a media file from this computer"
+        ),
 
         .localFileItemTooltip: ("Archivo local", "Local file"),
         .urlItemTooltip: ("Enlace URL", "URL link"),
 
-        .showDescriptionTooltip: ("Clic para mostrar/ocultar la descripción", "Click to show/hide the description"),
+        .showDescriptionTooltip: (
+            "Clic para mostrar/ocultar la descripción", "Click to show/hide the description"
+        ),
 
-        .dockPlaylistTooltip: ("Acoplar junto a la ventana principal", "Dock next to the main window"),
+        .dockPlaylistTooltip: (
+            "Acoplar junto a la ventana principal", "Dock next to the main window"
+        ),
         .undockPlaylistTooltip: ("Desacoplar a ventana flotante", "Undock to a floating window"),
         .showPlaylistTooltip: ("Mostrar playlist", "Show playlist"),
         .hidePlaylistTooltip: ("Ocultar playlist", "Hide playlist"),
@@ -223,13 +250,19 @@ final class LocalizationManager: ObservableObject {
         .downloadMp3Tooltip: ("Descargar audio como MP3", "Download audio as MP3"),
         .cancelDownloadTooltip: ("Cancelar descarga", "Cancel download"),
         .revealInFinderTooltip: ("Mostrar en el Finder", "Show in Finder"),
-        .retryDownloadTooltip: ("La descarga falló. Clic para reintentar", "Download failed. Click to retry"),
-        .downloadNeedsYtdlp: ("Se necesita yt-dlp para descargar", "yt-dlp is required to download"),
+        .retryDownloadTooltip: (
+            "La descarga falló. Clic para reintentar", "Download failed. Click to retry"
+        ),
+        .downloadNeedsYtdlp: (
+            "Se necesita yt-dlp para descargar", "yt-dlp is required to download"
+        ),
         .downloadNeedsFfmpeg: (
             "Se necesita ffmpeg para descargar (instálalo con Homebrew: brew install ffmpeg)",
             "ffmpeg is required to download (install it with Homebrew: brew install ffmpeg)"
         ),
-        .downloadFailedGeneric: ("No se pudo completar la descarga.", "The download could not be completed."),
+        .downloadFailedGeneric: (
+            "No se pudo completar la descarga.", "The download could not be completed."
+        ),
 
         .generalTab: ("General", "General"),
         .logViewerTab: ("Registro", "Log Viewer"),
@@ -255,5 +288,21 @@ final class LocalizationManager: ObservableObject {
             "A newer version of %1$@ is available: %3$@ (this app bundles %2$@). Re-run ./build.sh and reinstall to update it."
         ),
         .updateAvailableSeeRelease: ("Ver la versión más reciente", "See the latest release"),
+
+        .searchTitle: ("Buscar", "Search"),
+        .searchPlaceholder: ("Buscar vídeos…", "Search videos…"),
+        .showSearchTooltip: ("Buscar", "Search"),
+        .hideSearchTooltip: ("Ocultar búsqueda", "Hide search"),
+        .searchLabel: ("Buscar", "Search"),
+        .playSearchResultTooltip: ("Clic para reproducir", "Click to play"),
+        .searchNeedsYtdlp: ("Se necesita yt-dlp para buscar", "yt-dlp is required to search"),
+        .noSearchResults: ("No se encontraron vídeos.", "No videos found."),
+        .searchTimedOut: (
+            "La búsqueda tardó demasiado. Inténtalo de nuevo.",
+            "The search took too long. Try again."
+        ),
+        .searchFailedGeneric: (
+            "No se pudo completar la búsqueda.", "The search could not be completed."
+        ),
     ]
 }

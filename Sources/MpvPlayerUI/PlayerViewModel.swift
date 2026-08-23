@@ -100,6 +100,15 @@ final class PlayerViewModel: ObservableObject {
     /// can reflect that state in its own icon.
     @Published var isPlaylistVisible: Bool = false
 
+    /// Set by the AppDelegate; called when the user wants to show/hide the
+    /// Search window.
+    var onOpenSearchRequested: (() -> Void)?
+
+    /// Mirrors whether the AppDelegate's search window is currently visible,
+    /// so the main window's search button can reflect that state in its own
+    /// icon (mismo patrón que `isPlaylistVisible`).
+    @Published var isSearchVisible: Bool = false
+
     /// Set by the AppDelegate; called once playback actually starts, with the
     /// resolved title, so it can show a system-level "now playing" toast
     /// (outside mpv's own window).
@@ -173,7 +182,9 @@ final class PlayerViewModel: ObservableObject {
 
     @discardableResult
     func playPrevious() -> Bool {
-        guard let previous = playlistStore.item(before: currentlyPlayingItemID) else { return false }
+        guard let previous = playlistStore.item(before: currentlyPlayingItemID) else {
+            return false
+        }
         play(item: previous)
         return true
     }
@@ -250,7 +261,8 @@ final class PlayerViewModel: ObservableObject {
         vuMeterHideTask?.cancel()
         let task = DispatchWorkItem { [weak self] in self?.showVUMeters = false }
         vuMeterHideTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.vuMeterHideDelaySeconds, execute: task)
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + Self.vuMeterHideDelaySeconds, execute: task)
     }
 
     private func handlePauseChanged(_ paused: Bool) {
@@ -388,8 +400,9 @@ final class PlayerViewModel: ObservableObject {
     func prefillURLFromClipboardIfEmpty() {
         guard urlText.isEmpty else { return }
         if let clipboard = NSPasteboard.general.string(forType: .string),
-           let url = URL(string: clipboard.trimmingCharacters(in: .whitespacesAndNewlines)),
-           url.scheme == "http" || url.scheme == "https" {
+            let url = URL(string: clipboard.trimmingCharacters(in: .whitespacesAndNewlines)),
+            url.scheme == "http" || url.scheme == "https"
+        {
             urlText = clipboard.trimmingCharacters(in: .whitespacesAndNewlines)
         }
     }
@@ -412,7 +425,8 @@ final class PlayerViewModel: ObservableObject {
         // (que puede venir de una `PlaylistItem.quality` desactualizada —
         // ver `PlaylistItem.isLocalAudioFile` — o de la calidad que tuviera
         // seleccionada el desplegable): la extensión del archivo manda.
-        let effectiveQuality = PlaylistItem.isLocalAudioFile(urlString: targetURLString)
+        let effectiveQuality =
+            PlaylistItem.isLocalAudioFile(urlString: targetURLString)
             ? .audioOnly
             : overrideQuality ?? quality
         loadingToken += 1
@@ -435,10 +449,13 @@ final class PlayerViewModel: ObservableObject {
                     }
                     self.onShowTitleToastRequested?(title)
                 },
-                onTimePositionChanged: { [weak self] seconds in self?.handleTimePositionChanged(seconds) },
+                onTimePositionChanged: { [weak self] seconds in
+                    self?.handleTimePositionChanged(seconds)
+                },
                 onDurationChanged: { [weak self] seconds in self?.handleDurationChanged(seconds) },
                 onAudioLevelsChanged: { [weak self] left, right in
-                    self?.handleAudioLevelsChanged(token: requestToken, leftDB: left, rightDB: right)
+                    self?.handleAudioLevelsChanged(
+                        token: requestToken, leftDB: left, rightDB: right)
                 }
             )
             playlistStore.add(urlString: targetURLString, quality: effectiveQuality)
@@ -447,7 +464,9 @@ final class PlayerViewModel: ObservableObject {
             // (evita duplicados sin más): si es un archivo de audio local
             // con una calidad vieja guardada de antes de este mecanismo, se
             // corrige aquí para que las próximas veces ya nazca bien.
-            if let playingItem, playingItem.quality != effectiveQuality, effectiveQuality == .audioOnly {
+            if let playingItem, playingItem.quality != effectiveQuality,
+                effectiveQuality == .audioOnly
+            {
                 playlistStore.updateQuality(for: playingItem, quality: .audioOnly)
             }
             currentlyPlayingItemID = playingItem?.id
@@ -469,7 +488,9 @@ final class PlayerViewModel: ObservableObject {
             // resuelve de nuevo desde cero.
             var resolvedTitle = playingItem?.title
             if resolvedTitle == nil, let id = playingItem?.id,
-               let knownTitle = playlistStore.previouslyResolvedTitle(forVideoMatching: targetURLString) {
+                let knownTitle = playlistStore.previouslyResolvedTitle(
+                    forVideoMatching: targetURLString)
+            {
                 playlistStore.updateTitle(for: id, title: knownTitle)
                 resolvedTitle = knownTitle
             }
@@ -488,6 +509,15 @@ final class PlayerViewModel: ObservableObject {
     func play(item: PlaylistItem) {
         urlText = item.urlString
         play(quality: item.quality)
+    }
+
+    /// Reproduce una URL que no viene de un `PlaylistItem` ya existente —
+    /// usado por `SearchView` al tocar un resultado de búsqueda. Mismo
+    /// camino que `play(item:)`: `play(quality:)` ya se encarga de añadirla
+    /// a la playlist si no estaba.
+    func play(urlString: String, quality overrideQuality: VideoQuality? = nil) {
+        urlText = urlString
+        play(quality: overrideQuality)
     }
 
     /// Reproduce el primer archivo elegido con el selector de archivos del
@@ -560,12 +590,14 @@ final class PlayerViewModel: ObservableObject {
     /// reproducción, para no lanzar un proceso yt-dlp adicional de más.
     func fetchDescriptionForCurrentlyPlayingIfNeeded() {
         guard let id = currentlyPlayingItemID,
-              let item = playlistStore.items.first(where: { $0.id == id }) else { return }
+            let item = playlistStore.items.first(where: { $0.id == id })
+        else { return }
         guard item.description == nil, !isFetchingDescription else { return }
         guard let ytdlpPath = status.ytdlpPath else { return }
 
         isFetchingDescription = true
-        YtDlpMetadataFetcher.fetchDescription(urlString: item.urlString, ytdlpPath: ytdlpPath) { [weak self] description in
+        YtDlpMetadataFetcher.fetchDescription(urlString: item.urlString, ytdlpPath: ytdlpPath) {
+            [weak self] description in
             guard let self else { return }
             // El flag es global (no por ítem): siempre se resetea, aunque el
             // usuario ya haya cambiado de vídeo mientras yt-dlp corría, para
@@ -675,7 +707,8 @@ final class PlayerViewModel: ObservableObject {
         guard !packages.isEmpty else { return }
 
         isInstalling = true
-        installProgress = LocalizationManager.shared.t(.installingPrefix) + packages.joined(separator: ", ") + "…"
+        installProgress =
+            LocalizationManager.shared.t(.installingPrefix) + packages.joined(separator: ", ") + "…"
         errorMessage = nil
 
         HomebrewInstaller.install(
