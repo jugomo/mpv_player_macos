@@ -69,52 +69,64 @@ struct PlaylistView: View {
                                 .help(loc.t(.dragToReorderTooltip))
                                 .draggable(item.id.uuidString)
 
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack(spacing: 4) {
-                                    Image(systemName: item.isLocalFile ? "folder" : "link")
-                                        .foregroundStyle(.secondary)
-                                        .font(.caption)
-                                        .help(loc.t(item.isLocalFile ? .localFileItemTooltip : .urlItemTooltip))
-                                    Text(item.title ?? item.urlString)
-                                        .fontWeight(isPlaying ? .semibold : .regular)
-                                    if isPlaying {
-                                        Spacer(minLength: 4)
-                                        Image(systemName: "speaker.wave.2.fill")
-                                            .foregroundStyle(Color.accentColor)
+                            // Deslizable con arrastre de mouse además del
+                            // swipe de trackpad de abajo: `.swipeActions`
+                            // solo reacciona al gesto de scroll horizontal
+                            // (así funciona en macOS bajo AppKit), que un
+                            // mouse normal no puede producir. `SwipeRevealCell`
+                            // añade un `DragGesture` de clic-y-arrastre sobre
+                            // este mismo contenido para revelar el panel con
+                            // un mouse; ambos caminos abren las mismas
+                            // acciones (`rowActions(for:)`).
+                            SwipeRevealCell(actions: rowActions(for: item)) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: item.isLocalFile ? "folder" : "link")
+                                            .foregroundStyle(.secondary)
                                             .font(.caption)
-                                    }
-                                }
-                                .contentShape(Rectangle())
-                                .onTapGesture(count: 2) {
-                                    viewModel.play(item: item)
-                                    onItemPlayed?()
-                                }
-                                .help(loc.t(.doubleClickToPlay))
-
-                                // La calidad solo tiene sentido para un
-                                // stream remoto (yt-dlp elige el formato);
-                                // un archivo local se reproduce tal cual.
-                                if !item.isLocalFile {
-                                    Picker("", selection: qualityBinding(for: item)) {
-                                        ForEach(VideoQuality.allCases) { quality in
-                                            Text(quality.displayName(in: loc.language)).tag(quality)
+                                            .help(loc.t(item.isLocalFile ? .localFileItemTooltip : .urlItemTooltip))
+                                        Text(item.title ?? item.fallbackDisplayTitle)
+                                            .fontWeight(isPlaying ? .semibold : .regular)
+                                        if isPlaying {
+                                            Spacer(minLength: 4)
+                                            Image(systemName: "speaker.wave.2.fill")
+                                                .foregroundStyle(Color.accentColor)
+                                                .font(.caption)
                                         }
                                     }
-                                    .labelsHidden()
-                                    .frame(width: 120)
-                                    .help(loc.t(.qualityTooltip))
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture(count: 2) {
+                                        viewModel.play(item: item)
+                                        onItemPlayed?()
+                                    }
+                                    .help(loc.t(.doubleClickToPlay))
 
-                            // Indicador de descarga en curso, visible en la
-                            // fila sin necesidad de deslizarla (a diferencia
-                            // de cancelarla, que sigue siendo una acción de
-                            // swipe — ver `downloadSwipeAction`).
-                            if downloads.isDownloading(item.id) {
-                                ProgressView()
-                                    .progressViewStyle(.circular)
-                                    .controlSize(.small)
+                                    // La calidad solo tiene sentido para un
+                                    // stream remoto (yt-dlp elige el
+                                    // formato); un archivo local se
+                                    // reproduce tal cual.
+                                    if !item.isLocalFile {
+                                        Picker("", selection: qualityBinding(for: item)) {
+                                            ForEach(VideoQuality.allCases) { quality in
+                                                Text(quality.displayName(in: loc.language)).tag(quality)
+                                            }
+                                        }
+                                        .labelsHidden()
+                                        .frame(width: 120)
+                                        .help(loc.t(.qualityTooltip))
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                                // Indicador de descarga en curso, visible en
+                                // la fila sin necesidad de deslizarla (a
+                                // diferencia de cancelarla, que sigue siendo
+                                // una acción del panel — ver `rowActions`).
+                                if downloads.isDownloading(item.id) {
+                                    ProgressView()
+                                        .progressViewStyle(.circular)
+                                        .controlSize(.small)
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -124,34 +136,18 @@ struct PlaylistView: View {
                         .cornerRadius(4)
                         // Eliminar/descargar/copiar ya no son botones
                         // siempre visibles: se revelan deslizando la fila
-                        // hacia la izquierda, como en cualquier lista de
-                        // iOS/macOS.
+                        // hacia la izquierda, con trackpad (swipe nativo) o
+                        // con mouse (`SwipeRevealCell` de arriba).
                         .swipeActions(edge: .trailing) {
-                            Button(role: .destructive) {
-                                store.remove(item)
-                            } label: {
-                                Image(systemName: "trash")
-                            }
-                            .accessibilityLabel(loc.t(.removeFromPlaylistTooltip))
-
-                            // Descargar no aplica a un archivo ya local (no
-                            // hay nada que traer, ya está en disco): solo
-                            // para ítems de enlace URL.
-                            if !item.isLocalFile {
-                                downloadSwipeAction(for: item)
-                            }
-
-                            // Copiar la URL tampoco aplica a un archivo
-                            // local (es una ruta de archivo, no un enlace
-                            // que tenga sentido compartir/pegar).
-                            if !item.isLocalFile {
-                                Button {
-                                    copyToClipboard(item.urlString)
+                            ForEach(rowActions(for: item)) { action in
+                                Button(role: action.isDestructive ? .destructive : nil) {
+                                    action.action()
                                 } label: {
-                                    Image(systemName: "doc.on.doc")
+                                    Image(systemName: action.systemImage)
                                 }
-                                .accessibilityLabel(loc.t(.copyUrlTooltip))
-                                .tint(.blue)
+                                .disabled(action.isDisabled)
+                                .accessibilityLabel(action.accessibilityLabel)
+                                .tint(action.tint)
                             }
                         }
                         .dropDestination(for: String.self) { draggedIDs, _ in
@@ -178,54 +174,90 @@ struct PlaylistView: View {
     /// visualmente para que coincida con el de la ventana principal.
     private static let dockedCornerRadius: CGFloat = 20
 
-    /// Acción de descarga por swipe (solo icono, como el resto — ver
-    /// `.accessibilityLabel` en vez de `.help`, que no aplica en un botón de
-    /// swipe). Icono y acción dependen del estado de la descarga de ese
+    /// Acciones reveladas al deslizar una fila hacia la izquierda —
+    /// compartidas entre el `.swipeActions` nativo (trackpad) y
+    /// `SwipeRevealCell` (arrastre con mouse), para no duplicar ni
+    /// desincronizar qué botones aparecen y qué hacen.
+    private func rowActions(for item: PlaylistItem) -> [RowAction] {
+        var actions: [RowAction] = [
+            RowAction(
+                systemImage: "trash",
+                tint: .red,
+                accessibilityLabel: loc.t(.removeFromPlaylistTooltip),
+                isDestructive: true
+            ) {
+                store.remove(item)
+            }
+        ]
+
+        // Descargar/copiar no aplican a un archivo ya local: no hay nada
+        // que traer (ya está en disco) ni un enlace que tenga sentido
+        // compartir/pegar (es una ruta de archivo).
+        if !item.isLocalFile {
+            actions.append(downloadRowAction(for: item))
+            actions.append(RowAction(
+                systemImage: "doc.on.doc",
+                tint: .blue,
+                accessibilityLabel: loc.t(.copyUrlTooltip),
+                isDestructive: false
+            ) {
+                copyToClipboard(item.urlString)
+            })
+        }
+
+        return actions
+    }
+
+    /// Icono y acción de descarga dependen del estado de la descarga de ese
     /// ítem (ver `DownloadManager.DownloadState`): descargar, cancelar
     /// mientras descarga, revelar en Finder si terminó, o reintentar si
     /// falló.
-    @ViewBuilder
-    private func downloadSwipeAction(for item: PlaylistItem) -> some View {
+    private func downloadRowAction(for item: PlaylistItem) -> RowAction {
         let isAudio = item.quality == .audioOnly
         switch downloads.state(for: item.id) {
         case .idle:
-            Button {
+            return RowAction(
+                systemImage: isAudio ? "square.and.arrow.down.on.square" : "square.and.arrow.down",
+                tint: .blue,
+                accessibilityLabel: downloadIdleTooltip(isAudio: isAudio),
+                isDestructive: false,
+                isDisabled: viewModel.status.ytdlpPath == nil
+            ) {
                 startDownload(item)
-            } label: {
-                Image(systemName: isAudio ? "square.and.arrow.down.on.square" : "square.and.arrow.down")
             }
-            .disabled(viewModel.status.ytdlpPath == nil)
-            .accessibilityLabel(downloadIdleTooltip(isAudio: isAudio))
-            .tint(.blue)
 
         case .downloading:
-            // Sin barra de progreso aquí: el panel de swipe se cierra en
-            // cuanto se pulsa un botón, así que no llegaría a verse
-            // avanzar — solo importa poder cancelar mientras tanto.
-            Button {
+            // Sin barra de progreso aquí: el panel se cierra en cuanto se
+            // pulsa un botón, así que no llegaría a verse avanzar — solo
+            // importa poder cancelar mientras tanto.
+            return RowAction(
+                systemImage: "xmark.circle",
+                tint: .gray,
+                accessibilityLabel: loc.t(.cancelDownloadTooltip),
+                isDestructive: false
+            ) {
                 downloads.cancel(item.id)
-            } label: {
-                Image(systemName: "xmark.circle")
             }
-            .accessibilityLabel(loc.t(.cancelDownloadTooltip))
 
         case .finished(let url):
-            Button {
+            return RowAction(
+                systemImage: "checkmark.circle.fill",
+                tint: .green,
+                accessibilityLabel: loc.t(.revealInFinderTooltip),
+                isDestructive: false
+            ) {
                 downloads.revealInFinder(url)
-            } label: {
-                Image(systemName: "checkmark.circle.fill")
             }
-            .accessibilityLabel(loc.t(.revealInFinderTooltip))
-            .tint(.green)
 
         case .failed(let message):
-            Button {
+            return RowAction(
+                systemImage: "exclamationmark.triangle.fill",
+                tint: .orange,
+                accessibilityLabel: loc.t(.retryDownloadTooltip) + "\n" + message,
+                isDestructive: false
+            ) {
                 startDownload(item)
-            } label: {
-                Image(systemName: "exclamationmark.triangle.fill")
             }
-            .accessibilityLabel(loc.t(.retryDownloadTooltip) + "\n" + message)
-            .tint(.orange)
         }
     }
 
@@ -290,6 +322,100 @@ struct PlaylistView: View {
             try store.importItems(from: url)
         } catch {
             errorMessage = loc.t(.importFailedPrefix) + error.localizedDescription
+        }
+    }
+}
+
+/// Una acción revelada al deslizar una fila de la playlist (borrar,
+/// descargar/cancelar/reintentar, copiar URL). Descrita una sola vez en
+/// `PlaylistView.rowActions(for:)` y renderizada tanto por el
+/// `.swipeActions` nativo (trackpad) como por `SwipeRevealCell` (arrastre
+/// con mouse), para que ambos caminos ofrezcan siempre los mismos botones.
+private struct RowAction: Identifiable {
+    let id = UUID()
+    let systemImage: String
+    let tint: Color
+    let accessibilityLabel: String
+    let isDestructive: Bool
+    var isDisabled: Bool = false
+    let action: () -> Void
+}
+
+/// Celda de playlist deslizable con el mouse: complemento al
+/// `.swipeActions` nativo de `List`, que en macOS solo responde al gesto de
+/// scroll horizontal del trackpad (así lo implementa AppKit por debajo) y
+/// no reacciona a un clic-y-arrastre con un mouse normal.
+///
+/// Envuelve el contenido de la fila (todo menos el icono ☰ de reordenar,
+/// que queda fuera para no competir por el mismo gesto — ver el comentario
+/// junto a `.draggable` en `PlaylistView`) en un `ZStack` con el panel de
+/// acciones fijo al borde derecho y detrás; un `DragGesture` desplaza el
+/// contenido hacia la izquierda para revelarlo, y se cierra solo al pulsar
+/// una acción o al terminar el arrastre por debajo del umbral.
+private struct SwipeRevealCell<Content: View>: View {
+    let actions: [RowAction]
+    @ViewBuilder let content: () -> Content
+
+    @State private var offset: CGFloat = 0
+    @GestureState private var dragTranslation: CGFloat = 0
+
+    private let buttonWidth: CGFloat = 46
+    private var actionsWidth: CGFloat { CGFloat(actions.count) * buttonWidth }
+
+    /// Desplazamiento actual del contenido, ya incluyendo el arrastre en
+    /// curso y acotado entre cerrado (0) y completamente abierto
+    /// (`-actionsWidth`) — nunca se puede arrastrar más allá del panel ni
+    /// hacia la derecha.
+    private var currentOffset: CGFloat {
+        min(0, max(-actionsWidth, offset + dragTranslation))
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            HStack(spacing: 0) {
+                ForEach(actions) { action in
+                    Button {
+                        action.action()
+                        close()
+                    } label: {
+                        Image(systemName: action.systemImage)
+                            .frame(width: buttonWidth, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(action.isDisabled)
+                    .foregroundStyle(.white)
+                    .background(action.tint)
+                    .accessibilityLabel(action.accessibilityLabel)
+                }
+            }
+            // Oculto salvo mientras se revela: el contenido de encima ya lo
+            // cubre por completo en reposo, pero con `opacity` evitamos
+            // cualquier resquicio en huecos transparentes del contenido
+            // (p. ej. el `Spacer` del indicador "reproduciendo").
+            .opacity(currentOffset < -0.5 ? 1 : 0)
+
+            content()
+                .contentShape(Rectangle())
+                .offset(x: currentOffset)
+                .gesture(
+                    DragGesture(minimumDistance: 12)
+                        .updating($dragTranslation) { value, state, _ in
+                            state = value.translation.width
+                        }
+                        .onEnded { value in
+                            let projected = offset + value.translation.width
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                offset = projected < -actionsWidth * 0.4 ? -actionsWidth : 0
+                            }
+                        }
+                )
+        }
+        .clipped()
+    }
+
+    private func close() {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            offset = 0
         }
     }
 }

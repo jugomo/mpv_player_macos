@@ -25,10 +25,19 @@ final class PlaylistStore: ObservableObject {
         load()
     }
 
-    func add(urlString: String, quality: VideoQuality) {
-        guard !items.contains(where: { $0.urlString == urlString }) else { return }
-        items.insert(PlaylistItem(urlString: urlString, quality: quality), at: 0)
+    /// Devuelve el ítem ya existente con esa `urlString` si lo había, o si
+    /// no, el recién creado e insertado — para que quien llama pueda actuar
+    /// sobre él sin tener que volver a buscarlo (p. ej. disparar la
+    /// resolución de título/carátula de un archivo local recién añadido).
+    @discardableResult
+    func add(urlString: String, quality: VideoQuality) -> PlaylistItem {
+        if let existing = items.first(where: { $0.urlString == urlString }) {
+            return existing
+        }
+        let item = PlaylistItem(urlString: urlString, quality: quality)
+        items.insert(item, at: 0)
         save()
+        return item
     }
 
     /// Título ya resuelto de una reproducción anterior del mismo vídeo,

@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Combine
 import MediaPlayer
 
@@ -13,7 +14,20 @@ final class PlayerViewModel: ObservableObject {
 
     /// Item currently loaded in mpv, used to resolve next/previous track
     /// commands from the keyboard media keys and the Control Center widget.
-    @Published private(set) var currentlyPlayingItemID: UUID?
+    @Published private(set) var currentlyPlayingItemID: UUID? {
+        didSet {
+            guard oldValue != currentlyPlayingItemID else { return }
+            refreshCurrentlyPlayingThumbnail()
+        }
+    }
+
+    /// Carátula del ítem en reproducción, recalculada solo al cambiar de
+    /// ítem (ver `refreshCurrentlyPlayingThumbnail`) en vez de en cada
+    /// acceso: para un archivo local puede implicar leer sus metadatos con
+    /// AVFoundation, y `PlayerView` recompone su `body` con cada cambio de
+    /// cualquier otro `@Published` (progreso, volumen, etc.), así que una
+    /// propiedad computada aquí repetiría ese trabajo sin necesidad.
+    @Published private(set) var currentlyPlayingThumbnail: ThumbnailSource?
 
     /// `true` mientras se está pidiendo la descripción del vídeo actual a
     /// yt-dlp (ver `fetchDescriptionForCurrentlyPlayingIfNeeded`).
@@ -387,10 +401,100 @@ final class PlayerViewModel: ObservableObject {
 
     private func handleTitleResolved(_ title: String) {
         guard let id = currentlyPlayingItemID else { return }
+        // Un archivo local resuelve su título aparte, con sus propios
+        // metadatos ("Autor - Título", ver `resolveLocalTitleIfNeeded`): el
+        // "media-title" que reporta mpv aquí para un local es como mucho el
+        // nombre del archivo (o el tag "title" a secas, sin autor), así que
+        // dejarlo pisar el nuestro sería un paso atrás.
+        guard let item = playlistStore.items.first(where: { $0.id == id }), !item.isLocalFile else { return }
         playlistStore.updateTitle(for: id, title: title)
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
         info[MPMediaItemPropertyTitle] = title
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    /// Título a mostrar en el toast de "reproduciendo ahora" (ver
+    /// `onShowTitleToastRequested`). Para un archivo local usa el ya
+    /// resuelto en la playlist ("Autor - Título", o el nombre del archivo
+    /// si aún no hay metadatos — ver `resolveLocalTitleIfNeeded`) en vez
+    /// del `title` que reporta mpv, que como mucho trae el tag "título" a
+    /// secas, sin autor. Para todo lo demás (streams remotos) `title` ya es
+    /// el correcto: se deja tal cual.
+    private func toastTitle(fallback title: String) -> String {
+        guard let id = currentlyPlayingItemID,
+              let item = playlistStore.items.first(where: { $0.id == id }),
+              item.isLocalFile else { return title }
+        return item.title ?? item.fallbackDisplayTitle
+    }
+
+    /// Ítems locales cuya resolución de título (ver abajo) ya está en
+    /// marcha, para no lanzar una segunda lectura de metadatos en paralelo
+    /// si `resolveLocalTitleIfNeeded` se llama dos veces para el mismo
+    /// ítem (p. ej. una vez al encolarlo y otra al empezar a reproducirlo).
+    private var localTitleResolutionInFlight: Set<UUID> = []
+
+    /// Resuelve el título mostrado de un archivo local a partir de sus
+    /// propios metadatos ("Autor - Título", ver
+    /// `Self.resolveLocalDisplayTitle`), en vez de esperar a que mpv lo
+    /// reporte (que como mucho da el tag "título" a secas, sin autor — ver
+    /// `handleTitleResolved`). No hace nada si el ítem no es local, ya
+    /// tiene título, o ya hay una resolución en marcha para él.
+    private func resolveLocalTitleIfNeeded(for item: PlaylistItem) {
+        guard item.isLocalFile, item.title == nil, !localTitleResolutionInFlight.contains(item.id) else { return }
+        localTitleResolutionInFlight.insert(item.id)
+        let id = item.id
+        let path = item.urlString
+        Task { @MainActor [weak self] in
+            defer { self?.localTitleResolutionInFlight.remove(id) }
+            guard let self else { return }
+            let title = await Self.resolveLocalDisplayTitle(forFileAt: path)
+            // Si mientras se leían los metadatos ya se resolvió el título
+            // por otro camino (p. ej. esta misma función llamada dos
+            // veces), no lo pisa.
+            guard self.playlistStore.items.first(where: { $0.id == id })?.title == nil else { return }
+            self.playlistStore.updateTitle(for: id, title: title)
+            if self.currentlyPlayingItemID == id {
+                var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
+                info[MPMediaItemPropertyTitle] = title
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+            }
+        }
+    }
+
+    /// Título "Autor - Título" leído de los metadatos comunes del archivo
+    /// (tags "artist"/"title" de ID3 en mp3, átomos equivalentes en
+    /// m4a/mp4, etc.) vía `AVAsset`. Si solo hay título, se usa solo, y si
+    /// no hay ninguno de los dos (o el archivo no tiene metadatos, p. ej.
+    /// un wav sin tags), se cae al nombre del archivo — a diferencia de
+    /// `embeddedCoverArtImage`, esta nunca devuelve `nil`: siempre hay algo
+    /// razonable que mostrar como título.
+    private static nonisolated func resolveLocalDisplayTitle(forFileAt path: String) async -> String {
+        let fallback = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        guard path.hasPrefix("/") else { return fallback }
+        let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+        guard let commonMetadata = try? await asset.load(.commonMetadata) else { return fallback }
+        let title = await stringValue(from: commonMetadata, identifier: .commonIdentifierTitle)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        let artist = await stringValue(from: commonMetadata, identifier: .commonIdentifierArtist)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        switch (artist, title) {
+        case let (artist?, title?): return "\(artist) - \(title)"
+        case let (nil, title?): return title
+        default: return fallback
+        }
+    }
+
+    /// Primer valor de texto de los metadatos con el identificador común
+    /// dado (p. ej. `.commonIdentifierTitle`), o `nil` si no está presente.
+    private static nonisolated func stringValue(
+        from metadata: [AVMetadataItem], identifier: AVMetadataIdentifier
+    ) async -> String? {
+        guard let item = AVMetadataItem.metadataItems(from: metadata, filteredByIdentifier: identifier).first else {
+            return nil
+        }
+        return (try? await item.load(.stringValue)) ?? nil
     }
 
     func refreshDependencyStatus() {
@@ -447,7 +551,7 @@ final class PlayerViewModel: ObservableObject {
                     if requestToken == self.loadingToken {
                         self.onLoadingStateChanged?(false)
                     }
-                    self.onShowTitleToastRequested?(title)
+                    self.onShowTitleToastRequested?(self.toastTitle(fallback: title))
                 },
                 onTimePositionChanged: { [weak self] seconds in
                     self?.handleTimePositionChanged(seconds)
@@ -458,18 +562,20 @@ final class PlayerViewModel: ObservableObject {
                         token: requestToken, leftDB: left, rightDB: right)
                 }
             )
-            playlistStore.add(urlString: targetURLString, quality: effectiveQuality)
-            let playingItem = playlistStore.items.first(where: { $0.urlString == targetURLString })
+            let playingItem = playlistStore.add(urlString: targetURLString, quality: effectiveQuality)
             // `playlistStore.add` no toca la calidad de un ítem ya existente
             // (evita duplicados sin más): si es un archivo de audio local
             // con una calidad vieja guardada de antes de este mecanismo, se
             // corrige aquí para que las próximas veces ya nazca bien.
-            if let playingItem, playingItem.quality != effectiveQuality,
-                effectiveQuality == .audioOnly
-            {
+            if playingItem.quality != effectiveQuality, effectiveQuality == .audioOnly {
                 playlistStore.updateQuality(for: playingItem, quality: .audioOnly)
             }
-            currentlyPlayingItemID = playingItem?.id
+            // "Autor - Título" de sus propios metadatos si es un archivo
+            // local sin título resuelto aún (normalmente ya en marcha desde
+            // `playLocalFiles`, pero cubre también el caso de pegar una
+            // ruta local a mano en el campo de URL).
+            resolveLocalTitleIfNeeded(for: playingItem)
+            currentlyPlayingItemID = playingItem.id
             isPaused = false
             currentTimeSeconds = 0
             durationSeconds = 0
@@ -486,16 +592,16 @@ final class PlayerViewModel: ObservableObject {
             // no coincida, p.ej. por parámetros de tracking), reutiliza ese
             // título ya conocido en vez de mostrar la URL mientras mpv la
             // resuelve de nuevo desde cero.
-            var resolvedTitle = playingItem?.title
-            if resolvedTitle == nil, let id = playingItem?.id,
+            var resolvedTitle = playingItem.title
+            if resolvedTitle == nil,
                 let knownTitle = playlistStore.previouslyResolvedTitle(
                     forVideoMatching: targetURLString)
             {
-                playlistStore.updateTitle(for: id, title: knownTitle)
+                playlistStore.updateTitle(for: playingItem.id, title: knownTitle)
                 resolvedTitle = knownTitle
             }
 
-            updateNowPlayingInfo(title: resolvedTitle ?? targetURLString)
+            updateNowPlayingInfo(title: resolvedTitle ?? playingItem.fallbackDisplayTitle)
             urlText = ""
             onPlaybackStarted?()
         } catch {
@@ -541,7 +647,11 @@ final class PlayerViewModel: ObservableObject {
         // es lo que se usaría para cualquier archivo local que no sea de
         // audio puro.
         for url in urls.reversed() {
-            playlistStore.add(urlString: url.path, quality: quality)
+            let item = playlistStore.add(urlString: url.path, quality: quality)
+            // También para los que se quedan solo encolados (todos menos el
+            // primero, que además arranca abajo): que muestren "Autor -
+            // Título" en la playlist sin tener que reproducirlos antes.
+            resolveLocalTitleIfNeeded(for: item)
         }
         urlText = first.path
         play()
@@ -574,7 +684,7 @@ final class PlayerViewModel: ObservableObject {
     var currentlyPlayingTitle: String? {
         guard let id = currentlyPlayingItemID else { return nil }
         guard let item = playlistStore.items.first(where: { $0.id == id }) else { return nil }
-        return item.title ?? item.urlString
+        return item.title ?? item.fallbackDisplayTitle
     }
 
     /// Descripción ya cacheada del ítem actual, si se pidió antes (ver
@@ -628,26 +738,62 @@ final class PlayerViewModel: ObservableObject {
         return item.quality != .audioOnly && !item.isLocalAudioFile
     }
 
-    /// URL de la carátula del ítem actualmente en reproducción, usada como
-    /// imagen cuando se reproduce en modo "Solo audio": la miniatura de
-    /// YouTube si es un enlace de YouTube, o un archivo de imagen local con
-    /// el mismo nombre que el archivo de audio si es un archivo local (p.ej.
-    /// "cancion.mp3" + "cancion.jpg" en la misma carpeta). `nil` si no
-    /// aplica ninguno de los dos casos.
-    var currentlyPlayingThumbnailURL: URL? {
-        guard let id = currentlyPlayingItemID else { return nil }
-        guard let item = playlistStore.items.first(where: { $0.id == id }) else { return nil }
-        if let videoID = PlaylistStore.youTubeVideoID(from: item.urlString) {
-            return URL(string: "https://img.youtube.com/vi/\(videoID)/hqdefault.jpg")
+    /// Carátula del ítem actualmente en reproducción, usada como imagen
+    /// cuando se reproduce en modo "Solo audio": la miniatura de YouTube si
+    /// es un enlace de YouTube, o si es un archivo local, por este orden —
+    /// un archivo de imagen junto a él con el mismo nombre (p.ej.
+    /// "cancion.mp3" + "cancion.jpg" en la misma carpeta) y si no hay,
+    /// la carátula incrustada en sus propios metadatos (ID3, átomos MP4,
+    /// etc.), si el archivo trae una. `nil` si no aplica ninguno de los
+    /// casos.
+    enum ThumbnailSource {
+        case remote(URL)
+        case image(NSImage)
+    }
+
+    /// Recalcula `currentlyPlayingThumbnail` para el ítem actual. Llamado
+    /// solo al cambiar de ítem (ver el `didSet` de `currentlyPlayingItemID`
+    /// más arriba), nunca en cada acceso.
+    private func refreshCurrentlyPlayingThumbnail() {
+        guard let id = currentlyPlayingItemID,
+              let item = playlistStore.items.first(where: { $0.id == id }) else {
+            currentlyPlayingThumbnail = nil
+            return
         }
-        return Self.localCoverArtURL(forFileAt: item.urlString)
+        if let videoID = PlaylistStore.youTubeVideoID(from: item.urlString),
+           let url = URL(string: "https://img.youtube.com/vi/\(videoID)/hqdefault.jpg") {
+            currentlyPlayingThumbnail = .remote(url)
+            return
+        }
+        if let coverURL = Self.localCoverArtURL(forFileAt: item.urlString), let image = NSImage(contentsOf: coverURL) {
+            currentlyPlayingThumbnail = .image(image)
+            return
+        }
+        currentlyPlayingThumbnail = nil
+        guard item.isLocalFile else { return }
+
+        // Nada "de al lado": queda por probar la carátula incrustada en los
+        // metadatos del propio archivo, que en `AVAsset` solo se lee de
+        // forma asíncrona (ver `embeddedCoverArtImage`). Si mientras tanto
+        // el usuario ya cambió de ítem, el chequeo de `id` al final descarta
+        // el resultado en vez de pisar la carátula del ítem nuevo.
+        let urlString = item.urlString
+        Task { @MainActor [weak self] in
+            guard let self, let image = await Self.embeddedCoverArtImage(forFileAt: urlString) else { return }
+            guard self.currentlyPlayingItemID == id else { return }
+            self.currentlyPlayingThumbnail = .image(image)
+        }
     }
 
     /// Extensiones de imagen habituales para carátulas, probadas en orden.
     private static let coverArtExtensions = ["jpg", "jpeg", "png", "webp", "gif", "bmp", "tiff"]
 
     /// Busca, junto a un archivo de audio local, una imagen con el mismo
-    /// nombre base (sin extensión) en la misma carpeta.
+    /// nombre base (sin extensión) en la misma carpeta. Se prueba antes que
+    /// la carátula incrustada en los metadatos (`embeddedCoverArtImage`):
+    /// si el usuario puso una imagen explícita al lado del archivo, gana a
+    /// la que traiga el propio archivo (a menudo una miniatura de baja
+    /// resolución).
     private static func localCoverArtURL(forFileAt path: String) -> URL? {
         guard path.hasPrefix("/") else { return nil }
         let fileURL = URL(fileURLWithPath: path)
@@ -660,6 +806,22 @@ final class PlayerViewModel: ObservableObject {
             }
         }
         return nil
+    }
+
+    /// Carátula incrustada en los metadatos del propio archivo local (tag
+    /// "APIC" de ID3 en mp3, átomo "covr" en m4a/mp4, etc.), vía
+    /// `AVAsset.commonMetadata`, que ya normaliza esas variantes por
+    /// formato bajo la misma clave común `.commonIdentifierArtwork`.
+    /// `async` porque en macOS 13+ `AVAsset` solo expone sus propiedades
+    /// mediante `load(_:)`; para un archivo local en disco (sin red de por
+    /// medio) resuelve casi al instante.
+    private static nonisolated func embeddedCoverArtImage(forFileAt path: String) async -> NSImage? {
+        guard path.hasPrefix("/") else { return nil }
+        let asset = AVURLAsset(url: URL(fileURLWithPath: path))
+        guard let commonMetadata = try? await asset.load(.commonMetadata) else { return nil }
+        let artworkItems = AVMetadataItem.metadataItems(from: commonMetadata, filteredByIdentifier: .commonIdentifierArtwork)
+        guard let item = artworkItems.first, let data = try? await item.load(.dataValue) else { return nil }
+        return NSImage(data: data)
     }
 
     func toggleFullscreen() {

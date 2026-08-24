@@ -56,4 +56,15 @@ struct PlaylistItem: Codable, Identifiable, Equatable {
     /// (ventana con/sin vídeo, vúmetro, etc.), precisamente para no
     /// depender de que `quality` esté al día.
     var isLocalAudioFile: Bool { Self.isLocalAudioFile(urlString: urlString) }
+
+    /// Título de respaldo mientras `title` sigue sin resolver (`nil`): para
+    /// un archivo local, su nombre sin la ruta ni la extensión (más legible
+    /// que la ruta absoluta completa mientras
+    /// `PlayerViewModel.resolveLocalTitleIfNeeded` termina de leer sus
+    /// metadatos, o si el archivo no trae ninguno); para un enlace, la URL
+    /// tal cual.
+    var fallbackDisplayTitle: String {
+        guard isLocalFile else { return urlString }
+        return URL(fileURLWithPath: urlString).deletingPathExtension().lastPathComponent
+    }
 }

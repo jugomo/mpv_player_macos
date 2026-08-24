@@ -85,11 +85,11 @@ struct PlayerView: View {
 
             titleView
 
-            if let thumbnailURL = viewModel.currentlyPlayingThumbnailURL {
+            if let thumbnail = viewModel.currentlyPlayingThumbnail {
                 HStack(alignment: .top, spacing: 20) {
                     ZStack {
                         Color.black
-                        thumbnailImage(for: thumbnailURL)
+                        thumbnailImage(for: thumbnail)
                     }
                     .frame(width: thumbnailSide, height: thumbnailSide)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -478,22 +478,19 @@ struct PlayerView: View {
     }
 
     /// Carátula del ítem en reproducción (ver
-    /// `PlayerViewModel.currentlyPlayingThumbnailURL`). Las locales se cargan
-    /// directo con `NSImage` en vez de con `AsyncImage`: `URLSession` (que
-    /// usa `AsyncImage` por debajo) no está garantizado para esquema
-    /// "file://", mientras que un archivo local ya está en disco y no
-    /// necesita nada asíncrono.
+    /// `PlayerViewModel.currentlyPlayingThumbnail`). Las locales
+    /// (`.image`, ya sea de un archivo junto al audio o de su metadato de
+    /// carátula) llegan como `NSImage` ya cargada, sin nada asíncrono que
+    /// hacer aquí; solo la miniatura de YouTube (`.remote`) necesita red,
+    /// vía `AsyncImage`.
     @ViewBuilder
-    private func thumbnailImage(for url: URL) -> some View {
-        if url.isFileURL {
-            if let nsImage = NSImage(contentsOf: url) {
-                Image(nsImage: nsImage)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else {
-                Color.clear
-            }
-        } else {
+    private func thumbnailImage(for thumbnail: PlayerViewModel.ThumbnailSource) -> some View {
+        switch thumbnail {
+        case .image(let nsImage):
+            Image(nsImage: nsImage)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+        case .remote(let url):
             AsyncImage(url: url) { phase in
                 if case .success(let image) = phase {
                     image.resizable().aspectRatio(contentMode: .fit)

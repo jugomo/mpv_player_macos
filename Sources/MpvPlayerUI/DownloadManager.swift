@@ -92,7 +92,7 @@ final class DownloadManager: ObservableObject {
                     output.finalPath = String(line.dropFirst(Self.finalPathPrefix.count))
                         .trimmingCharacters(in: .whitespaces)
                 } else if let percent = Self.parsePercent(line) {
-                    Task { @MainActor in
+                    Task { @MainActor [weak self] in
                         guard let self, self.isDownloading(item.id) else { return }
                         self.states[item.id] = .downloading(progress: percent)
                     }
@@ -107,7 +107,7 @@ final class DownloadManager: ObservableObject {
             let status = proc.terminationStatus
             let finalPath = output.finalPath
             let lastErrorLine = output.lastErrorLine
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.processes[item.id] = nil
                 if status == 0 {
