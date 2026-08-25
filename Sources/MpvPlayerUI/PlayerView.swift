@@ -282,6 +282,7 @@ struct PlayerView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
             }
             .frame(maxHeight: Self.descriptionMaxHeight)
             .environment(\.openURL, OpenURLAction { url in
