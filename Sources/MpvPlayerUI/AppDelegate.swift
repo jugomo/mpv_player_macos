@@ -50,6 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var titleToastDismissWorkItem: DispatchWorkItem?
     private var titleToastMouseMonitors: [Any] = []
     private var titleToastIsHovering = false
+    private var mainWindowEscapeMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // En segundo plano y sin bloquear el arranque: tarda ~1-2s en estar
@@ -113,6 +114,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         startObservingFocusLossForAutoClose()
+        startObservingEscapeToCloseWindows()
+    }
+
+    /// Escape cierra la ventana con foco: la playlist (acoplada o flotante)
+    /// si es esa la que lo tiene, si no la principal. No se usa
+    /// `.onExitCommand` de SwiftUI porque no llega a dispararse cuando el
+    /// foco está en un `TextField` (p. ej. la URL en la ventana principal):
+    /// su editor de campo se traga el Escape para revertir la edición en
+    /// curso y nunca lo deja subir por la cadena de respondedores. Un
+    /// monitor local de teclado, en cambio, ve la tecla sin depender de quién
+    /// sea el first responder.
+    ///
+    /// La playlist FLOTANTE es `.closable`, así que AppKit ya la cerraría
+    /// sola con Escape (`NSWindow.cancelOperation(_:)` hace `performClose`
+    /// en cualquier ventana `.closable` que no sea la principal); pero
+    /// ACOPLADA pierde ese `.closable` (ver `showPlaylistWindow`), así que
+    /// hace falta cerrarla a mano en ambos casos para que Escape funcione
+    /// igual sea cual sea el modo.
+    ///
+    /// Al cerrar la playlist así también se persiste `playlistVisible =
+    /// false` (mismo criterio que el botón de `togglePlaylistVisibility`):
+    /// es un cierre deliberado del usuario, no uno automático por perder el
+    /// foco (`hidePlaylistWindow` a secas, que no toca esa preferencia), así
+    /// que la próxima vez que se abra la ventana principal la playlist debe
+    /// seguir oculta en vez de reaparecer sola.
+    private func startObservingEscapeToCloseWindows() {
+        mainWindowEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) {
+            [weak self] event in
+            guard let self, event.keyCode == 53 /* Escape */ else { return event }
+            let keyWindow = NSApp.keyWindow
+            if playlistWindow?.isVisible == true, keyWindow === playlistWindow {
+                hidePlaylistWindow()
+                PlaybackWindowSettingsManager.shared.playlistVisible = false
+                return nil
+            }
+            if popover.isShown, keyWindow === mainPopoverWindow() {
+                closePopover()
+                return nil
+            }
+            return event
+        }
     }
 
     /// Con `closeWindowsOnPlay` activado, la ventana principal y la playlist

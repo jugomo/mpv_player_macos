@@ -55,7 +55,8 @@ enum LKey {
     case logTruncatedNoteFormat
     case updateAvailableFormat, updateAvailableSeeRelease
     case searchTitle, searchPlaceholder, showSearchTooltip, hideSearchTooltip
-    case searchLabel, playSearchResultTooltip
+    case searchLabel
+    case playSearchResultVideoTooltip, playSearchResultAudioTooltip
     case searchNeedsYtdlp, noSearchResults, searchTimedOut, searchFailedGeneric
 }
 
@@ -294,7 +295,8 @@ final class LocalizationManager: ObservableObject {
         .showSearchTooltip: ("Buscar", "Search"),
         .hideSearchTooltip: ("Ocultar búsqueda", "Hide search"),
         .searchLabel: ("Buscar", "Search"),
-        .playSearchResultTooltip: ("Clic para reproducir", "Click to play"),
+        .playSearchResultVideoTooltip: ("Reproducir como vídeo", "Play as video"),
+        .playSearchResultAudioTooltip: ("Reproducir solo audio", "Play audio only"),
         .searchNeedsYtdlp: ("Se necesita yt-dlp para buscar", "yt-dlp is required to search"),
         .noSearchResults: ("No se encontraron vídeos.", "No videos found."),
         .searchTimedOut: (

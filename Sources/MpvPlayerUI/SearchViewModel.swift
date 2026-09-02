@@ -1,10 +1,11 @@
 import Foundation
 
-/// Estado y ciclo de vida de la búsqueda: debounce de la query
-/// tecleada, cancelación de la búsqueda en curso al llegar una nueva o al
-/// cerrarse la ventana, y watchdog de tiempo máximo total (ver
-/// `YtDlpSearchFetcher`: `--socket-timeout` solo acota operaciones de red
-/// individuales, no todo el crawl de `ytsearch`).
+/// Estado y ciclo de vida de la búsqueda: la búsqueda se lanza a pedido
+/// (botón de lupa / Enter en `SearchView`, ver `search()`), no automáticamente
+/// al dejar de teclear. Se ocupa igualmente de cancelar la búsqueda en curso
+/// al llegar una nueva o al cerrarse la ventana, y de un watchdog de tiempo
+/// máximo total (ver `YtDlpSearchFetcher`: `--socket-timeout` solo acota
+/// operaciones de red individuales, no todo el crawl de `ytsearch`).
 ///
 /// Vive fuera de `SearchView` (lo posee `AppDelegate`, como `PlaylistStore`/
 /// `DownloadManager`) para que una búsqueda en curso sobreviva a cerrar y
@@ -12,7 +13,15 @@ import Foundation
 @MainActor
 final class SearchViewModel: ObservableObject {
     @Published var query: String = "" {
-        didSet { scheduleSearch() }
+        didSet {
+            guard query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+            // El campo quedó vacío (borrado manual o botón "x"): se limpia
+            // el estado de la última búsqueda en vez de dejar resultados
+            // viejos colgando a la espera de una nueva búsqueda a pedido.
+            cancelInFlightSearch()
+            results = []
+            errorMessage = nil
+        }
     }
     @Published private(set) var results: [SearchResult] = []
     @Published private(set) var isSearching: Bool = false
@@ -21,10 +30,8 @@ final class SearchViewModel: ObservableObject {
     /// Mínimo de caracteres para lanzar una búsqueda: evita procesos yt-dlp
     /// para queries de una letra que no devolverían nada útil.
     private static let minimumQueryLength = 2
-    private static let debounceSeconds: Double = 0.4
     private static let timeoutSeconds: Double = 15
 
-    private var debounceTask: DispatchWorkItem?
     private var timeoutTask: DispatchWorkItem?
     private var currentSearch: YtDlpSearchFetcher.SearchTask?
     /// Distingue una búsqueda de otra más nueva: si el resultado/fin de una
@@ -41,8 +48,10 @@ final class SearchViewModel: ObservableObject {
         self.ytdlpPath = ytdlpPath
     }
 
-    private func scheduleSearch() {
-        debounceTask?.cancel()
+    /// Lanza la búsqueda de la query actual. Llamado desde `SearchView` al
+    /// tocar el icono de lupa o pulsar Enter en el campo de texto — ya no hay
+    /// debounce automático al teclear.
+    func search() {
         cancelInFlightSearch()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= Self.minimumQueryLength else {
@@ -50,9 +59,7 @@ final class SearchViewModel: ObservableObject {
             errorMessage = nil
             return
         }
-        let task = DispatchWorkItem { [weak self] in self?.runSearch(trimmed) }
-        debounceTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.debounceSeconds, execute: task)
+        runSearch(trimmed)
     }
 
     private func runSearch(_ query: String) {
