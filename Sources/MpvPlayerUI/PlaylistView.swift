@@ -181,6 +181,7 @@ struct PlaylistView: View {
     private func rowActions(for item: PlaylistItem) -> [RowAction] {
         var actions: [RowAction] = [
             RowAction(
+                id: "delete",
                 systemImage: "trash",
                 tint: .red,
                 accessibilityLabel: loc.t(.removeFromPlaylistTooltip),
@@ -196,6 +197,7 @@ struct PlaylistView: View {
         if !item.isLocalFile {
             actions.append(downloadRowAction(for: item))
             actions.append(RowAction(
+                id: "copy",
                 systemImage: "doc.on.doc",
                 tint: .blue,
                 accessibilityLabel: loc.t(.copyUrlTooltip),
@@ -217,6 +219,7 @@ struct PlaylistView: View {
         switch downloads.state(for: item.id) {
         case .idle:
             return RowAction(
+                id: "download",
                 systemImage: isAudio ? "square.and.arrow.down.on.square" : "square.and.arrow.down",
                 tint: .blue,
                 accessibilityLabel: downloadIdleTooltip(isAudio: isAudio),
@@ -231,6 +234,7 @@ struct PlaylistView: View {
             // pulsa un botón, así que no llegaría a verse avanzar — solo
             // importa poder cancelar mientras tanto.
             return RowAction(
+                id: "download",
                 systemImage: "xmark.circle",
                 tint: .gray,
                 accessibilityLabel: loc.t(.cancelDownloadTooltip),
@@ -241,6 +245,7 @@ struct PlaylistView: View {
 
         case .finished(let url):
             return RowAction(
+                id: "download",
                 systemImage: "checkmark.circle.fill",
                 tint: .green,
                 accessibilityLabel: loc.t(.revealInFinderTooltip),
@@ -251,6 +256,7 @@ struct PlaylistView: View {
 
         case .failed(let message):
             return RowAction(
+                id: "download",
                 systemImage: "exclamationmark.triangle.fill",
                 tint: .orange,
                 accessibilityLabel: loc.t(.retryDownloadTooltip) + "\n" + message,
@@ -332,7 +338,14 @@ struct PlaylistView: View {
 /// `.swipeActions` nativo (trackpad) como por `SwipeRevealCell` (arrastre
 /// con mouse), para que ambos caminos ofrezcan siempre los mismos botones.
 private struct RowAction: Identifiable {
-    let id = UUID()
+    // Id estable ("delete"/"download"/"copy") en vez de un `UUID()` nuevo en
+    // cada llamada: `rowActions(for:)` se reconstruye en cada actualización
+    // de `viewModel` (p. ej. `currentTimeSeconds`, hasta ~18 veces/segundo
+    // mientras reproduce), y con un id aleatorio cada re-render sustituía la
+    // identidad del `Button` justo cuando SwiftUI estaba reconociendo el
+    // toque — la causa de que "a veces" el botón de borrar (u otras
+    // acciones del swipe) no llegara a disparar la acción.
+    let id: String
     let systemImage: String
     let tint: Color
     let accessibilityLabel: String

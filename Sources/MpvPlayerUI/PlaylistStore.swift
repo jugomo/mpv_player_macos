@@ -134,17 +134,22 @@ final class PlaylistStore: ObservableObject {
         return items[(index - 1 + items.count) % items.count]
     }
 
+    /// Exporta en el orden actual de la playlist tal cual se ve en la UI:
+    /// sin reordenar por fecha ni por ningún otro criterio, para que el
+    /// archivo `.pl` sea un reflejo exacto de cómo quedó organizada a mano.
     func export(to url: URL) throws {
         let data = try Self.jsonEncoder.encode(items)
         try data.write(to: url, options: .atomic)
     }
 
+    /// Sustituye la playlist actual por el contenido del archivo: se
+    /// descarta lo que hubiera antes de importar. El orden mostrado tras
+    /// importar es el mismo en que aparecen los ítems en el archivo — el
+    /// mismo que tenía la playlist de origen al exportarlo (ver `export`).
     func importItems(from url: URL) throws {
         let data = try Data(contentsOf: url)
         let imported = try Self.jsonDecoder.decode([PlaylistItem].self, from: data)
-        let existingURLs = Set(items.map(\.urlString))
-        items.append(contentsOf: imported.filter { !existingURLs.contains($0.urlString) })
-        items.sort { $0.addedAt > $1.addedAt }
+        items = imported
         save()
     }
 
