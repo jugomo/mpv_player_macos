@@ -143,17 +143,37 @@ if [ ! -x "${BUNDLE}/Contents/Resources/bin/yt-dlp" ]; then
     CACHED_YTDLP_TAG=""
     [ -f "$YTDLP_CACHE_VERSION" ] && CACHED_YTDLP_TAG="$(cat "$YTDLP_CACHE_VERSION")"
 
-    if [ -n "$LATEST_YTDLP_TAG" ] && [ "$LATEST_YTDLP_TAG" != "$CACHED_YTDLP_TAG" ]; then
-        echo "    Descargando yt-dlp ${LATEST_YTDLP_TAG} (caché tenía: ${CACHED_YTDLP_TAG:-ninguna})…"
+    ytdlp_cache_is_sound() {
+        [ -x "$YTDLP_CACHE" ] || return 1
+        [ -n "$CACHED_YTDLP_TAG" ] || return 1
+        local reported
+        reported="$("$YTDLP_CACHE" --version 2>/dev/null || true)"
+        [ "$reported" = "$CACHED_YTDLP_TAG" ]
+    }
+
+    if [ -n "$LATEST_YTDLP_TAG" ] && { [ "$LATEST_YTDLP_TAG" != "$CACHED_YTDLP_TAG" ] || ! ytdlp_cache_is_sound; }; then
+        if [ -x "$YTDLP_CACHE" ] && [ "$LATEST_YTDLP_TAG" = "$CACHED_YTDLP_TAG" ]; then
+            echo "    Caché de yt-dlp ${CACHED_YTDLP_TAG} corrupta (el binario no reporta esa versión), redescargando…"
+        else
+            echo "    Descargando yt-dlp ${LATEST_YTDLP_TAG} (caché tenía: ${CACHED_YTDLP_TAG:-ninguna})…"
+        fi
         mkdir -p "$(dirname "$YTDLP_CACHE")"
-        # -C - reanuda desde donde se cortó en vez de volver a empezar de
-        # cero en cada reintento (--retry por sí solo no lo hace).
+        YTDLP_TMP="${YTDLP_CACHE}.tmp"
+        rm -f "$YTDLP_TMP"
         curl -fL --progress-bar --connect-timeout 15 --retry 5 --retry-delay 3 \
-            --retry-all-errors -C - -o "$YTDLP_CACHE" \
-            "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
-        chmod +x "$YTDLP_CACHE"
-        xattr -d com.apple.quarantine "$YTDLP_CACHE" 2>/dev/null || true
+            --retry-all-errors -C - -o "$YTDLP_TMP" \
+            "https://github.com/yt-dlp/yt-dlp/releases/download/${LATEST_YTDLP_TAG}/yt-dlp_macos"
+        chmod +x "$YTDLP_TMP"
+        xattr -d com.apple.quarantine "$YTDLP_TMP" 2>/dev/null || true
+        DOWNLOADED_VERSION="$("$YTDLP_TMP" --version 2>/dev/null || true)"
+        if [ "$DOWNLOADED_VERSION" != "$LATEST_YTDLP_TAG" ]; then
+            rm -f "$YTDLP_TMP"
+            echo "Error: yt-dlp descargado (${DOWNLOADED_VERSION:-no ejecuta}) no coincide con la release esperada (${LATEST_YTDLP_TAG})." >&2
+            exit 1
+        fi
+        mv -f "$YTDLP_TMP" "$YTDLP_CACHE"
         echo "$LATEST_YTDLP_TAG" > "$YTDLP_CACHE_VERSION"
+        CACHED_YTDLP_TAG="$LATEST_YTDLP_TAG"
     elif [ -x "$YTDLP_CACHE" ]; then
         echo "    (usando copia en caché ${CACHED_YTDLP_TAG:-(versión desconocida)}$( [ -z "$LATEST_YTDLP_TAG" ] && echo "; no se pudo consultar la última release, ¿sin red?" ))"
     else
