@@ -112,6 +112,11 @@ final class PlaylistStore: ObservableObject {
         save()
     }
 
+    func removeAll() {
+        items.removeAll()
+        save()
+    }
+
     /// Reordena manualmente los ítems (arrastrar y soltar en la UI).
     func move(fromOffsets source: IndexSet, toOffset destination: Int) {
         items.move(fromOffsets: source, toOffset: destination)

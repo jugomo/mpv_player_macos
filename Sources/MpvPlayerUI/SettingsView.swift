@@ -10,7 +10,7 @@ struct SettingsView: View {
             LogViewerView()
                 .tabItem { Text(loc.t(.logViewerTab)) }
         }
-        .frame(width: 480, height: 540)
+        .frame(width: 480, height: 620)
     }
 }
 
@@ -97,6 +97,17 @@ private struct GeneralSettingsView: View {
                 Toggle(loc.t(.closeWindowsOnPlayToggleLabel), isOn: $playbackWindow.closeWindowsOnPlay)
 
                 Text(loc.t(.closeWindowsOnPlayHint))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(loc.t(.showTitleToastToggleLabel), isOn: $playbackWindow.showTitleToast)
+
+                Text(loc.t(.showTitleToastHint))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -505,13 +505,22 @@ struct PlayerView: View {
     /// Selector de archivos del sistema para elegir vídeo/audio local, con
     /// selección múltiple: el primero elegido se reproduce de inmediato
     /// (igual que un enlace URL) y el resto se encola en la playlist (ver
-    /// `PlayerViewModel.playLocalFiles`).
+    /// `PlayerViewModel.playLocalFiles`). También acepta archivos `.pl`, que
+    /// se importan como playlist (sustituyendo la actual) en vez de
+    /// reproducirse.
     private func openLocalFile() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.audiovisualContent]
+        panel.allowedContentTypes = [.audiovisualContent, playlistUTType]
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
-        viewModel.playLocalFiles(at: panel.urls)
+        let isPlaylistFile = { (url: URL) in url.pathExtension.lowercased() == "pl" }
+        if let playlistFile = panel.urls.first(where: isPlaylistFile) {
+            viewModel.importPlaylist(from: playlistFile)
+        }
+        let mediaURLs = panel.urls.filter { !isPlaylistFile($0) }
+        if !mediaURLs.isEmpty {
+            viewModel.playLocalFiles(at: mediaURLs)
+        }
     }
 }

@@ -635,6 +635,17 @@ final class PlayerViewModel: ObservableObject {
     /// llana (`url.path`), no como URL "file://", para que mpv la cargue
     /// directo con su demuxer en vez de pasarla primero por el ytdl_hook
     /// (ver validación en `MPVLauncher.play`).
+    /// Carga un archivo `.pl` sustituyendo la playlist actual (igual que
+    /// "Importar…" en la vista de playlist).
+    func importPlaylist(from url: URL) {
+        errorMessage = nil
+        do {
+            try playlistStore.importItems(from: url)
+        } catch {
+            errorMessage = LocalizationManager.shared.t(.importFailedPrefix) + error.localizedDescription
+        }
+    }
+
     func playLocalFiles(at urls: [URL]) {
         guard let first = urls.first else { return }
         // `playlistStore.add` inserta cada ítem nuevo al principio de la

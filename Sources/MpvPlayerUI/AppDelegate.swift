@@ -102,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.toggleSearchVisibility()
         }
         viewModel.onShowTitleToastRequested = { [weak self] title in
+            guard PlaybackWindowSettingsManager.shared.showTitleToast else { return }
             self?.showTitleToast(title)
         }
         viewModel.onLoadingStateChanged = { [weak self] isLoading in
@@ -184,7 +185,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func closeCompanionWindowsIfFocusLost() {
         guard PlaybackWindowSettingsManager.shared.closeWindowsOnPlay else { return }
         guard popover.isShown || playlistWindow?.isVisible == true else { return }
-        let keyWindow = NSApp.keyWindow
+        // Una hoja (sheet, p. ej. el diálogo de confirmación de "Limpiar")
+        // se vuelve key window mientras está abierta: cuenta como foco de la
+        // ventana a la que pertenece, no como haberlo perdido.
+        let keyWindow = NSApp.keyWindow?.sheetParent ?? NSApp.keyWindow
         let stillFocused =
             keyWindow != nil && (keyWindow === mainPopoverWindow() || keyWindow === playlistWindow)
         guard !stillFocused else { return }

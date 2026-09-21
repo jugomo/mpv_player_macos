@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-private let playlistUTType = UTType(filenameExtension: "pl") ?? .json
+let playlistUTType = UTType(filenameExtension: "pl") ?? .json
 
 struct PlaylistView: View {
     @ObservedObject var store: PlaylistStore
@@ -13,6 +13,7 @@ struct PlaylistView: View {
     var onItemPlayed: (() -> Void)?
     var onToggleDocked: (() -> Void)?
     @State private var errorMessage: String?
+    @State private var showClearConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -30,6 +31,16 @@ struct PlaylistView: View {
                 Button(loc.t(.importEllipsis), action: importPlaylist)
                 Button(loc.t(.exportEllipsis), action: exportPlaylist)
                     .disabled(store.items.isEmpty)
+                Button(loc.t(.clearPlaylist)) { showClearConfirmation = true }
+                    .disabled(store.items.isEmpty)
+                    .confirmationDialog(
+                        loc.t(.clearPlaylistConfirmTitle),
+                        isPresented: $showClearConfirmation
+                    ) {
+                        Button(loc.t(.clearPlaylist), role: .destructive) {
+                            store.removeAll()
+                        }
+                    }
             }
 
             if let errorMessage {

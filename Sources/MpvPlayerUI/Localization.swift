@@ -27,7 +27,7 @@ enum LKey {
     case aboutCredit, helpSectionTitle, helpBody
     case creditsSectionTitle, creditsMpvDescription, creditsYtdlpDescription, creditsDisclaimer
     case creditsBgutilDescription
-    case playlistTitle, importEllipsis, exportEllipsis, noVideosYet
+    case playlistTitle, importEllipsis, exportEllipsis, clearPlaylist, clearPlaylistConfirmTitle, noVideosYet
     case doubleClickToPlay, qualityTooltip, copyUrlTooltip, removeFromPlaylistTooltip
     case dragToReorderTooltip
     case exportFailedPrefix, importFailedPrefix
@@ -38,6 +38,7 @@ enum LKey {
     case renderSectionTitle, renderQualityHint
     case audioOnlyWindowToggleLabel, audioOnlyWindowHint
     case closeWindowsOnPlayToggleLabel, closeWindowsOnPlayHint
+    case showTitleToastToggleLabel, showTitleToastHint
     case fullscreenTooltip, volumeTooltip, vuMeterToggleTooltip, alwaysOnTopTooltip
     case playLinkLabel, playLinkTooltip
     case openLocalFileLabel, openLocalFileTooltip
@@ -161,6 +162,8 @@ final class LocalizationManager: ObservableObject {
         .playlistTitle: ("Playlist", "Playlist"),
         .importEllipsis: ("Importar…", "Import…"),
         .exportEllipsis: ("Exportar…", "Export…"),
+        .clearPlaylist: ("Limpiar", "Clear"),
+        .clearPlaylistConfirmTitle: ("¿Borrar todos los elementos de la playlist?", "Remove all items from the playlist?"),
         .noVideosYet: ("Aún no se ha reproducido ningún vídeo.", "No videos played yet."),
         .doubleClickToPlay: ("Doble clic para reproducir", "Double-click to play"),
         .qualityTooltip: ("Calidad al reproducir", "Quality when played"),
@@ -208,6 +211,15 @@ final class LocalizationManager: ObservableObject {
         .closeWindowsOnPlayHint: (
             "Si se desactiva, ambas ventanas permanecen abiertas tras pulsar Reproducir en vez de cerrarse automáticamente.",
             "When disabled, both windows stay open after pressing Play instead of closing automatically."
+        ),
+
+        .showTitleToastToggleLabel: (
+            "Mostrar el título del medio al empezar a reproducir",
+            "Show the media title when playback starts"
+        ),
+        .showTitleToastHint: (
+            "Muestra una notificación breve con el título del medio que se va a reproducir.",
+            "Shows a brief notification with the title of the media that is about to play."
         ),
 
         .fullscreenTooltip: ("Pantalla completa", "Fullscreen"),

@@ -9,6 +9,7 @@ final class PlaybackWindowSettingsManager: ObservableObject {
     private static let hideWindowKey = "hideWindowForAudioOnly"
     private static let closeWindowsOnPlayKey = "closeWindowsOnPlay"
     private static let alwaysOnTopKey = "alwaysOnTop"
+    private static let showTitleToastKey = "showTitleToast"
     private static let playlistVisibleKey = "playlistVisible"
     private static let floatingPlaylistHeightKey = "floatingPlaylistHeight"
     private static let dockedPlaylistHeightKey = "dockedPlaylistHeight"
@@ -25,6 +26,12 @@ final class PlaybackWindowSettingsManager: ObservableObject {
     /// principal y la de playlist se cerraban siempre al pulsar reproducir).
     @Published var closeWindowsOnPlay: Bool {
         didSet { UserDefaults.standard.set(closeWindowsOnPlay, forKey: Self.closeWindowsOnPlayKey) }
+    }
+
+    /// Por defecto `true` (el toast con el título siempre se mostraba antes
+    /// de que esto fuera configurable). Ver `AppDelegate.showTitleToast`.
+    @Published var showTitleToast: Bool {
+        didSet { UserDefaults.standard.set(showTitleToast, forKey: Self.showTitleToastKey) }
     }
 
     /// Persiste entre reproducciones y reinicios de la app: mpv arranca
@@ -101,6 +108,11 @@ final class PlaybackWindowSettingsManager: ObservableObject {
             closeWindowsOnPlay = true
         } else {
             closeWindowsOnPlay = UserDefaults.standard.bool(forKey: Self.closeWindowsOnPlayKey)
+        }
+        if UserDefaults.standard.object(forKey: Self.showTitleToastKey) == nil {
+            showTitleToast = true
+        } else {
+            showTitleToast = UserDefaults.standard.bool(forKey: Self.showTitleToastKey)
         }
         alwaysOnTop = UserDefaults.standard.bool(forKey: Self.alwaysOnTopKey)
         playlistVisible = UserDefaults.standard.bool(forKey: Self.playlistVisibleKey)
