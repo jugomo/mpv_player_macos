@@ -59,6 +59,9 @@ enum LKey {
     case searchLabel
     case playSearchResultVideoTooltip, playSearchResultAudioTooltip
     case searchNeedsYtdlp, noSearchResults, searchTimedOut, searchFailedGeneric
+    case midiVUMeterToggleLabel, midiVUMeterHint
+    case midiVUMeterCalibrateButton, midiVUMeterCalibrateHint
+    case midiVUMeterStatusConnectedFormat, midiVUMeterStatusNotConnected
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -317,6 +320,25 @@ final class LocalizationManager: ObservableObject {
         ),
         .searchFailedGeneric: (
             "No se pudo completar la búsqueda.", "The search could not be completed."
+        ),
+
+        .midiVUMeterToggleLabel: (
+            "Mostrar el vúmetro en los LEDs de un teclado MIDI",
+            "Show the VU meter on a MIDI keyboard's LEDs"
+        ),
+        .midiVUMeterHint: (
+            "Enciende los pads de un M-Audio Oxygen Pro conectado por USB como vúmetro estéreo (fila superior = izquierdo, inferior = derecho). Requiere que el teclado esté en modo DAW.",
+            "Lights up a connected M-Audio Oxygen Pro's pads as a stereo VU meter (top row = left, bottom row = right). Requires the keyboard to be in DAW mode."
+        ),
+        .midiVUMeterCalibrateButton: ("Barrido de calibración", "Calibration sweep"),
+        .midiVUMeterCalibrateHint: (
+            "Envía notas de prueba una a una mientras observas qué pad se enciende. Revisa el resultado con: log stream --predicate 'subsystem == \"com.mpvplayer.midivu\"'",
+            "Sends test notes one at a time while you watch which pad lights up. Check the results with: log stream --predicate 'subsystem == \"com.mpvplayer.midivu\"'"
+        ),
+        .midiVUMeterStatusConnectedFormat: ("Detectado: %@", "Detected: %@"),
+        .midiVUMeterStatusNotConnected: (
+            "No se detecta ningún Oxygen Pro conectado.",
+            "No connected Oxygen Pro detected."
         ),
     ]
 }

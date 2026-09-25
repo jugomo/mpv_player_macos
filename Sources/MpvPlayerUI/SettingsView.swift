@@ -19,8 +19,16 @@ private struct GeneralSettingsView: View {
     @ObservedObject private var cache = CacheSettingsManager.shared
     @ObservedObject private var render = RenderSettingsManager.shared
     @ObservedObject private var playbackWindow = PlaybackWindowSettingsManager.shared
+    @ObservedObject private var midiVUMeter = MIDIVUMeterSettingsManager.shared
+    @ObservedObject private var midiController = MIDIPadVUMeterController.shared
 
     var body: some View {
+        ScrollView {
+            settingsContent
+        }
+    }
+
+    private var settingsContent: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(loc.t(.language))
@@ -113,8 +121,39 @@ private struct GeneralSettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Spacer()
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(loc.t(.midiVUMeterToggleLabel), isOn: $midiVUMeter.enabled)
+
+                Text(loc.t(.midiVUMeterHint))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if midiVUMeter.enabled {
+                    Text(
+                        midiController.connectedDestinationName.map {
+                            String(format: loc.t(.midiVUMeterStatusConnectedFormat), $0)
+                        } ?? loc.t(.midiVUMeterStatusNotConnected)
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    Button(loc.t(.midiVUMeterCalibrateButton)) {
+                        MIDIPadVUMeterController.shared.runCalibrationSweep()
+                    }
+                    .disabled(midiController.connectedDestinationName == nil)
+
+                    Text(loc.t(.midiVUMeterCalibrateHint))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
         }
         .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

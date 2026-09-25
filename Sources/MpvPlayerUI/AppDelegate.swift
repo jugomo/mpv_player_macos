@@ -878,6 +878,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         MPVLauncher.terminateSession()
         POTProviderLauncher.stop()
+        MIDIPadVUMeterController.shared.allPadsOff()
     }
 
     private func togglePopover(_ sender: NSStatusBarButton) {

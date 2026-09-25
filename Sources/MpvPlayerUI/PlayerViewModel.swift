@@ -256,6 +256,7 @@ final class PlayerViewModel: ObservableObject {
         isScrubbing = false
         audioLevels.left = 0
         audioLevels.right = 0
+        MIDIPadVUMeterController.shared.allPadsOff()
         onPauseStateChanged?(false)
         onPlaybackStopped?()
         onLoadingStateChanged?(false)
@@ -287,6 +288,7 @@ final class PlayerViewModel: ObservableObject {
             // vez de quedarse congelados en el último valor recibido.
             audioLevels.left = 0
             audioLevels.right = 0
+            MIDIPadVUMeterController.shared.allPadsOff()
         }
         onPauseStateChanged?(paused)
         var info = MPNowPlayingInfoCenter.default().nowPlayingInfo ?? [:]
@@ -351,8 +353,19 @@ final class PlayerViewModel: ObservableObject {
     /// vúmetro congelado en vez de caer — el bug era exactamente esta
     /// carrera, no la animación en sí.
     private func handleAudioLevelsChanged(token: Int, leftDB: Double, rightDB: Double) {
-        guard isWindowVisible else { return }
         guard token == loadingToken, currentlyPlayingItemID != nil, !isPaused else { return }
+
+        // El vúmetro MIDI (LEDs físicos del teclado) no depende de que el
+        // popover esté abierto como el vúmetro en pantalla de abajo: se
+        // actualiza aquí, antes del `guard isWindowVisible`, para que siga
+        // funcionando con la ventana cerrada.
+        if MIDIVUMeterSettingsManager.shared.enabled {
+            MIDIPadVUMeterController.shared.updateLevels(
+                left: Self.normalizedLevel(fromDB: leftDB, volumePercent: volume),
+                right: Self.normalizedLevel(fromDB: rightDB, volumePercent: volume))
+        }
+
+        guard isWindowVisible else { return }
         let now = CFAbsoluteTimeGetCurrent()
         guard now - lastAudioLevelsUpdate >= Self.audioLevelsMinInterval else { return }
         lastAudioLevelsUpdate = now
@@ -582,6 +595,7 @@ final class PlayerViewModel: ObservableObject {
             isScrubbing = false
             audioLevels.left = 0
             audioLevels.right = 0
+            MIDIPadVUMeterController.shared.allPadsOff()
             lastAudioLevelsUpdate = 0
             vuMeterHideTask?.cancel()
             vuMeterHideTask = nil
