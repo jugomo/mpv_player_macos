@@ -19,6 +19,7 @@ private struct GeneralSettingsView: View {
     @ObservedObject private var cache = CacheSettingsManager.shared
     @ObservedObject private var render = RenderSettingsManager.shared
     @ObservedObject private var playbackWindow = PlaybackWindowSettingsManager.shared
+    @ObservedObject private var subtitles = SubtitleSettingsManager.shared
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -108,6 +109,25 @@ private struct GeneralSettingsView: View {
                 Toggle(loc.t(.showTitleToastToggleLabel), isOn: $playbackWindow.showTitleToast)
 
                 Text(loc.t(.showTitleToastHint))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle(loc.t(.subtitlesToggleLabel), isOn: $subtitles.enabled)
+
+                HStack {
+                    Text(loc.t(.subtitlesLanguagesLabel))
+                    TextField(SubtitleSettingsManager.defaultLanguages, text: $subtitles.languages)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(maxWidth: 200)
+                }
+                .disabled(!subtitles.enabled)
+
+                Text(loc.t(.subtitlesHint))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
