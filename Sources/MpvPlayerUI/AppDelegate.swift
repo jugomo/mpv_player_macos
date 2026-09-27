@@ -53,6 +53,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var mainWindowEscapeMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Antes de lanzar cualquier sesión mpv, que es quien escribe en él.
+        MPVLauncher.trimLogFileIfNeeded()
         // En segundo plano y sin bloquear el arranque: tarda ~1-2s en estar
         // listo, así que conviene lanzarlo ya para que lo esté antes de que
         // el usuario pulse Reproducir por primera vez (ver POTProviderLauncher).

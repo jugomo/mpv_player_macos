@@ -23,6 +23,9 @@ private struct GeneralSettingsView: View {
     @ObservedObject private var midiVUMeter = MIDIVUMeterSettingsManager.shared
     @ObservedObject private var midiController = MIDIPadVUMeterController.shared
 
+    // Con scroll porque la ventana de ajustes tiene alto fijo: si el
+    // contenido no cabe, sin él se desborda y deja fuera de la ventana la
+    // barra de pestañas del TabView (y con ella el visor de logs).
     var body: some View {
         ScrollView {
             settingsContent
