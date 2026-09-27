@@ -62,6 +62,7 @@ enum LKey {
     case midiVUMeterToggleLabel, midiVUMeterHint
     case midiVUMeterCalibrateButton, midiVUMeterCalibrateHint
     case midiVUMeterStatusConnectedFormat, midiVUMeterStatusNotConnected
+    case subtitlesToggleLabel, subtitlesLanguagesLabel, subtitlesHint
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -339,6 +340,16 @@ final class LocalizationManager: ObservableObject {
         .midiVUMeterStatusNotConnected: (
             "No se detecta ningún Oxygen Pro conectado.",
             "No connected Oxygen Pro detected."
+        ),
+
+        .subtitlesToggleLabel: (
+            "Cargar subtítulos en los vídeos online",
+            "Load subtitles for online videos"
+        ),
+        .subtitlesLanguagesLabel: ("Idiomas:", "Languages:"),
+        .subtitlesHint: (
+            "Códigos de idioma separados por comas (p. ej. es, en). Se incluyen sus variantes regionales y automáticas. Elígelos desde la ventana de mpv (tecla j). Cada idioma extra retrasa un poco el arranque. No aplica a \"Solo audio\" ni a archivos locales.",
+            "Comma-separated language codes (e.g. es, en). Regional and auto-generated variants are included. Pick them from the mpv window (j key). Each extra language slightly delays startup. Doesn't apply to \"Audio only\" or local files."
         ),
     ]
 }

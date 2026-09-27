@@ -614,13 +614,22 @@ enum MPVLauncher {
         // los idiomas de subtítulos/CC disponibles, típicamente varias
         // decenas en un vídeo popular) salvo que raw_options ya traiga una
         // clave "sub-lang"/"sub-langs"/"srt-lang" — no hace falta que el
-        // valor sea real, solo que no esté vacío, así que un código
-        // inexistente basta para desactivarlo sin más. La app no muestra
-        // subtítulos en ningún sitio, así que "all" era puro coste sin
-        // beneficio: cada idioma pide su propio PO Token por separado (ver
-        // más arriba), sumando varios segundos de más al arranque cuando
-        // el vídeo tiene muchas traducciones automáticas.
-        client.send(command: ["set_property", "ytdl-raw-options", "sub-langs=00-none"])
+        // valor sea real, solo que no esté vacío. "all" es caro: cada idioma
+        // pide su propio PO Token por separado (ver más arriba), sumando
+        // varios segundos de más al arranque cuando el vídeo tiene muchas
+        // traducciones automáticas. Así que solo se piden los idiomas
+        // configurados en Ajustes (ver `SubtitleSettingsManager`), para
+        // poder elegirlos desde la ventana de mpv; en "Solo audio" no hay
+        // dónde mostrarlos, así que (igual que con los subtítulos
+        // desactivados) un código inexistente los desactiva.
+        //
+        // Se manda como objeto JSON (mapa clave→valor) y no como cadena
+        // "clave=valor": la coma de "es.*,en.*" partiría la cadena en dos
+        // opciones distintas.
+        let subLangs = request.quality == .audioOnly
+            ? "00-none"
+            : SubtitleSettingsManager.shared.ytdlpSubLangs ?? "00-none"
+        client.send(command: ["set_property", "ytdl-raw-options", ["sub-langs": subLangs]])
         for (name, value) in RenderSettingsManager.shared.quality.mpvProperties {
             client.send(command: ["set_property", name, value])
         }
