@@ -381,6 +381,14 @@ enum MPVLauncher {
             // por IPC en vez de tener que relanzar el proceso entero.
             "--idle=yes",
             "--keep-open=no",
+            // La salida de mpv va directa a `mpv.log` (ver más abajo), y sin
+            // esto la línea de estado (tiempo/A-V/caché) se redibuja varias
+            // veces por segundo durante toda la reproducción: al no ser una
+            // terminal, cada redibujado acaba como una línea más en disco.
+            // `--quiet` solo suprime esa línea; los mensajes info/warn/error
+            // (archivo abierto, pistas, códecs, hwdec, errores) se mantienen.
+            // Para diagnosticar con más detalle: quitarlo y/o añadir `-v`.
+            "--quiet",
             // Los servidores de YouTube (googlevideo) rechazan con 403 la
             // petición HTTP inicial que hace ffmpeg al abrir el stream: por
             // defecto pide un rango abierto ("Range: bytes=0-", sin límite
@@ -780,6 +788,27 @@ enum MPVLauncher {
         }
         defer { try? handle.close() }
         handle.truncateFile(atOffset: 0)
+    }
+
+    /// Recorta el log a sus últimos `maxBytes` (empezando en una línea
+    /// completa) si los supera; si no, no toca el archivo. Pensado para
+    /// llamarse al arrancar la app, antes de lanzar ninguna sesión mpv:
+    /// sin límite, el log crecería indefinidamente entre limpiezas
+    /// manuales. Se conserva el final en vez de vaciarlo para no perder el
+    /// contexto de un fallo en la sesión anterior, y se reescribe en el
+    /// sitio por el mismo motivo que `clearLogFile()`.
+    static func trimLogFileIfNeeded(maxBytes: Int = 1_000_000) {
+        let url = logFileURL()
+        guard let handle = try? FileHandle(forUpdating: url) else { return }
+        defer { try? handle.close() }
+        guard let total = try? handle.seekToEnd(), total > UInt64(maxBytes) else { return }
+        guard (try? handle.seek(toOffset: total - UInt64(maxBytes))) != nil,
+              var tail = try? handle.readToEnd() else { return }
+        if let newline = tail.firstIndex(of: UInt8(ascii: "\n")) {
+            tail = tail[tail.index(after: newline)...]
+        }
+        handle.truncateFile(atOffset: 0)
+        handle.write(tail)
     }
 
     static func logFileURL() -> URL {

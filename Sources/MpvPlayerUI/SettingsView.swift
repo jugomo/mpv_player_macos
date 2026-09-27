@@ -21,7 +21,17 @@ private struct GeneralSettingsView: View {
     @ObservedObject private var playbackWindow = PlaybackWindowSettingsManager.shared
     @ObservedObject private var subtitles = SubtitleSettingsManager.shared
 
+    // Con scroll porque la ventana de ajustes tiene alto fijo: si el
+    // contenido no cabe, sin él se desborda y deja fuera de la ventana la
+    // barra de pestañas del TabView (y con ella el visor de logs).
     var body: some View {
+        ScrollView {
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(loc.t(.language))
@@ -132,8 +142,6 @@ private struct GeneralSettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-
-            Spacer()
         }
         .padding(20)
     }
