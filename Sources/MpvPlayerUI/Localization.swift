@@ -63,6 +63,10 @@ enum LKey {
     case midiVUMeterCalibrateButton, midiVUMeterCalibrateHint
     case midiVUMeterStatusConnectedFormat, midiVUMeterStatusNotConnected
     case subtitlesToggleLabel, subtitlesLanguagesLabel, subtitlesHint
+    case midiInputToggleLabel, midiInputHint
+    case midiSectionTitle, midiLegendTitle
+    case midiLegendAppVolume, midiLegendSystemVolume, midiLegendPlayPause
+    case midiLegendStop, midiLegendPrevious, midiLegendNext
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -351,5 +355,21 @@ final class LocalizationManager: ObservableObject {
             "Códigos de idioma separados por comas (p. ej. es, en). Se incluyen sus variantes regionales y automáticas. Elígelos desde la ventana de mpv (tecla j). Cada idioma extra retrasa un poco el arranque. No aplica a \"Solo audio\" ni a archivos locales.",
             "Comma-separated language codes (e.g. es, en). Regional and auto-generated variants are included. Pick them from the mpv window (j key). Each extra language slightly delays startup. Doesn't apply to \"Audio only\" or local files."
         ),
+        .midiInputToggleLabel: (
+            "Controlar volumen y reproducción desde el teclado",
+            "Control volume and playback from the keyboard"
+        ),
+        .midiInputHint: (
+            "Funciona en modo preset y DAW, así que es compatible con el vúmetro en los LEDs. Tras cambiar de modo, confirma el submodo en el teclado o los botones no responderán.",
+            "Works in both preset and DAW mode, so it's compatible with the LED VU meter. After switching modes, confirm the submode on the keyboard or the buttons won't respond."
+        ),
+        .midiSectionTitle: ("Controlador de teclado MIDI", "MIDI Keyboard controller"),
+        .midiLegendTitle: ("Funciones disponibles", "Available functions"),
+        .midiLegendAppVolume: ("Volumen de la app", "App volume"),
+        .midiLegendSystemVolume: ("Volumen general de macOS", "macOS master volume"),
+        .midiLegendPlayPause: ("Play / pausa", "Play / pause"),
+        .midiLegendStop: ("Detener", "Stop"),
+        .midiLegendPrevious: ("Pista anterior", "Previous track"),
+        .midiLegendNext: ("Pista siguiente", "Next track"),
     ]
 }

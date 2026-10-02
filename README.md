@@ -52,6 +52,7 @@ builds are distributed for this project, only the source code.
 - **Playlist highlights what's currently playing**, in a window you can resize, dock under the popover or pop out floating — both the size and docked/floating state persist across restarts.
 - **Configurable video cache and render quality**, to tune startup latency vs. playback stability, and GPU/battery usage vs. sharpness in fullscreen.
 - **Spanish/English UI**, switchable from Settings without restarting the app.
+- **MIDI keyboard control (M-Audio Oxygen Pro).** Its pads light up as a stereo LED VU meter, the knob sets the app volume, the fader sets the macOS master volume, and the transport buttons do play/pause, stop and previous/next track — in both preset and DAW mode.
 - **Keeps its vendored tools honest.** The About panel quietly flags when a newer `mpv`/`yt-dlp` release is available upstream, since both ship vendored inside the app rather than being managed by a package manager at runtime.
 
 ## Requirements
@@ -162,6 +163,20 @@ that same right-click menu too now). It has two tabs:
 - **Video rendering** — "Performance" forces a cheap bilinear scaler (lower GPU/battery use in fullscreen) or "Quality" keeps `mpv`'s sharper default scaler.
 - **Audio-only window** — toggle whether `mpv` opens its own (auto-minimized) window when playing audio-only, or no window at all; either way, playback stays fully controllable from the app's own buttons, seek bar and VU meter.
 - **Close windows on play** — when enabled (the default), the main popover and the playlist window close automatically once playback starts. Turn it off to keep the popover open even after it loses focus (e.g. while you interact with `mpv`'s own window) — click the menu bar icon again to close it manually.
+- **MIDI Keyboard controller** — settings for an M-Audio Oxygen Pro connected over USB (tested with the Oxygen Pro 49), grouped in their own box:
+  - **VU meter on the pads' LEDs** — lights up the 16 pads as a stereo VU meter (top row = left, bottom row = right). Requires DAW mode; includes a calibration sweep to check the pad/color mapping.
+  - **Volume and playback controls** — maps the keyboard's controls, in both preset and DAW mode:
+
+    | Control | Function |
+    |---|---|
+    | Knob | App volume |
+    | Fader | macOS master volume |
+    | Play | Play / pause |
+    | Stop | Stop |
+    | ◀◀ | Previous track |
+    | ▶▶ | Next track |
+
+    After switching between preset and DAW mode, confirm the submode on the keyboard itself; until then the buttons don't send anything the app can use.
 
 **Log Viewer** — shows the tail of `mpv`'s log right in the app, with
 buttons to reload it, export it to a `.txt` file, or clear it. See
@@ -185,10 +200,13 @@ with `build.sh`, not an in-app update.
 - `Sources/MpvPlayerUI/PlaylistItem.swift` / `PlaylistStore.swift` — playlist item model (local-file vs. URL, quality, fetched title/description) and its JSON persistence/import/export to a `.pl` file
 - `Sources/MpvPlayerUI/YtDlpMetadataFetcher.swift` — fetches a video's description on demand via `yt-dlp` (mpv's IPC only exposes the title)
 - `Sources/MpvPlayerUI/PlaylistView.swift` — playlist window: highlights the currently playing item, drag-to-reorder, swipe actions, docked/floating toggle
-- `Sources/MpvPlayerUI/SettingsView.swift` — General tab (language, cache, render, audio-only window) and Log Viewer tab
+- `Sources/MpvPlayerUI/SettingsView.swift` — General tab (language, cache, render, audio-only window, MIDI keyboard controller) and Log Viewer tab
 - `Sources/MpvPlayerUI/LogViewerView.swift` — in-app viewer for `mpv`'s log, with reload/export/clear
 - `Sources/MpvPlayerUI/AboutView.swift` — About/Help window, including the vendored-tool update notice
 - `Sources/MpvPlayerUI/TitleToastView.swift` — the "now playing" toast shown outside `mpv`'s window
+- `Sources/MpvPlayerUI/MIDIPadVUMeterController.swift` / `MIDIVUMeterSettings.swift` — drives the Oxygen Pro's pad LEDs as a VU meter over CoreMIDI (SysEx handshake + per-pad color notes)
+- `Sources/MpvPlayerUI/MIDIInputController.swift` / `MIDIInputSettings.swift` — listens to the Oxygen Pro's knob, fader and transport buttons over CoreMIDI (preset and DAW mode), with a filter for the keyboard's crosstalk between controls
+- `Sources/MpvPlayerUI/SystemVolume.swift` — sets the macOS master volume of the default output device via CoreAudio
 - `Sources/MpvPlayerUI/Localization.swift` — hand-rolled ES/EN string table, switchable at runtime from Settings
 - `Sources/MpvPlayerUI/AppDelegate.swift` / `App.swift` — menu bar icon (incl. the loading/paused animations) and app startup
 - `Resources/Info.plist` — bundle metadata (`LSUIElement` to keep it menu-bar-only)

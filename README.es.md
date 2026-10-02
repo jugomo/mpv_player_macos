@@ -52,6 +52,7 @@ binarios ni compilados, solo el código fuente.
 - **La playlist destaca el vídeo que se está reproduciendo**, en una ventana que puedes redimensionar, acoplar bajo el popover o desacoplar flotante — tanto el tamaño como el estado acoplado/flotante se recuerdan entre reinicios.
 - **Caché de vídeo y calidad de renderizado configurables**, para ajustar la latencia de arranque frente a la estabilidad de reproducción, y el uso de GPU/batería frente a la nitidez en pantalla completa.
 - **Interfaz en español/inglés**, cambiable desde Ajustes sin reiniciar la app.
+- **Control con teclado MIDI (M-Audio Oxygen Pro).** Sus pads se iluminan como un vúmetro estéreo de LEDs, el knob ajusta el volumen de la app, el fader el volumen general de macOS y los botones de transporte hacen play/pausa, stop y pista anterior/siguiente, tanto en modo preset como DAW.
 - **Vigila sus propias herramientas vendorizadas.** El panel Acerca de avisa discretamente cuando hay una versión más reciente de `mpv`/`yt-dlp` disponible aguas arriba, ya que ambas van empaquetadas dentro de la app en vez de gestionarse con un gestor de paquetes en tiempo de ejecución.
 
 ## Requisitos
@@ -168,6 +169,20 @@ pestañas:
 - **Renderizado de vídeo** — "Rendimiento" fuerza un escalador bilineal barato (menor uso de GPU/batería en pantalla completa) o "Calidad" deja el escalador más nítido por defecto de `mpv`.
 - **Ventana en modo solo audio** — activa si `mpv` abre su propia ventana (minimizada automáticamente) al reproducir solo audio, o ninguna; en ambos casos la reproducción sigue siendo controlable al 100% desde los botones, la barra de progreso y el vúmetro de la propia app.
 - **Cerrar ventanas al reproducir** — activado por defecto: el popover principal y la ventana de playlist se cierran solos al empezar a reproducir. Desactívalo para que el popover principal quede visible aunque pierda el foco (p. ej. mientras interactúas con la ventana propia de `mpv`) — para cerrarlo, vuelve a hacer clic en el icono de la barra de menú.
+- **Controlador de teclado MIDI** — ajustes para un M-Audio Oxygen Pro conectado por USB (probado con el Oxygen Pro 49), agrupados en su propio recuadro:
+  - **Vúmetro en los LEDs de los pads** — enciende los 16 pads como un vúmetro estéreo (fila superior = izquierdo, inferior = derecho). Requiere modo DAW; incluye un barrido de calibración para comprobar el mapeo de pads y colores.
+  - **Controles de volumen y reproducción** — asigna los controles del teclado, tanto en modo preset como DAW:
+
+    | Control | Función |
+    |---|---|
+    | Knob | Volumen de la app |
+    | Fader | Volumen general de macOS |
+    | Play | Play / pausa |
+    | Stop | Detener |
+    | ◀◀ | Pista anterior |
+    | ▶▶ | Pista siguiente |
+
+    Tras cambiar entre modo preset y DAW, confirma el submodo en el propio teclado; hasta entonces los botones no envían nada que la app pueda usar.
 
 **Registro** — muestra la cola del log de `mpv` directamente en la app,
 con botones para recargarlo, exportarlo a un `.txt` o vaciarlo. Ver
@@ -193,10 +208,13 @@ actualización desde dentro de la app.
 - `Sources/MpvPlayerUI/PlaylistItem.swift` / `PlaylistStore.swift` — modelo del ítem de playlist (archivo local vs. URL, calidad, título/descripción obtenidos) y su persistencia JSON/importación/exportación a un archivo `.pl`
 - `Sources/MpvPlayerUI/YtDlpMetadataFetcher.swift` — obtiene la descripción de un vídeo bajo demanda vía `yt-dlp` (el IPC de mpv solo expone el título)
 - `Sources/MpvPlayerUI/PlaylistView.swift` — ventana de playlist: destaca el elemento que se está reproduciendo, arrastrar para reordenar, acciones por swipe, alternar acoplada/flotante
-- `Sources/MpvPlayerUI/SettingsView.swift` — pestaña General (idioma, caché, renderizado, ventana en solo audio) y pestaña Registro
+- `Sources/MpvPlayerUI/SettingsView.swift` — pestaña General (idioma, caché, renderizado, ventana en solo audio, controlador de teclado MIDI) y pestaña Registro
 - `Sources/MpvPlayerUI/LogViewerView.swift` — visor del log de `mpv` dentro de la app, con recargar/exportar/vaciar
 - `Sources/MpvPlayerUI/AboutView.swift` — ventana de Ayuda/Acerca de, incluido el aviso de actualización de herramientas vendorizadas
 - `Sources/MpvPlayerUI/TitleToastView.swift` — el aviso "reproduciendo ahora" que aparece fuera de la ventana de `mpv`
+- `Sources/MpvPlayerUI/MIDIPadVUMeterController.swift` / `MIDIVUMeterSettings.swift` — controla por CoreMIDI los LEDs de los pads del Oxygen Pro como vúmetro (handshake SysEx + notas de color por pad)
+- `Sources/MpvPlayerUI/MIDIInputController.swift` / `MIDIInputSettings.swift` — escucha por CoreMIDI el knob, el fader y los botones de transporte del Oxygen Pro (modo preset y DAW), con un filtro para el crosstalk del teclado entre controles
+- `Sources/MpvPlayerUI/SystemVolume.swift` — ajusta por CoreAudio el volumen general de macOS del dispositivo de salida por defecto
 - `Sources/MpvPlayerUI/Localization.swift` — tabla de textos ES/EN propia, cambiable en caliente desde Ajustes
 - `Sources/MpvPlayerUI/AppDelegate.swift` / `App.swift` — icono de barra de menú (incluidas las animaciones de carga/pausa) y arranque de la app
 - `Resources/Info.plist` — metadatos del bundle (`LSUIElement` para que sea solo de barra de menú)

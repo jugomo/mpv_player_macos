@@ -22,6 +22,7 @@ private struct GeneralSettingsView: View {
     @ObservedObject private var subtitles = SubtitleSettingsManager.shared
     @ObservedObject private var midiVUMeter = MIDIVUMeterSettingsManager.shared
     @ObservedObject private var midiController = MIDIPadVUMeterController.shared
+    @ObservedObject private var midiInput = MIDIInputSettingsManager.shared
 
     // Con scroll porque la ventana de ajustes tiene alto fijo: si el
     // contenido no cabe, sin él se desborda y deja fuera de la ventana la
@@ -146,37 +147,86 @@ private struct GeneralSettingsView: View {
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 6) {
-                Toggle(loc.t(.midiVUMeterToggleLabel), isOn: $midiVUMeter.enabled)
+            GroupBox {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle(loc.t(.midiVUMeterToggleLabel), isOn: $midiVUMeter.enabled)
 
-                Text(loc.t(.midiVUMeterHint))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+                        Text(loc.t(.midiVUMeterHint))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
 
-                if midiVUMeter.enabled {
-                    Text(
-                        midiController.connectedDestinationName.map {
-                            String(format: loc.t(.midiVUMeterStatusConnectedFormat), $0)
-                        } ?? loc.t(.midiVUMeterStatusNotConnected)
-                    )
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                        if midiVUMeter.enabled {
+                            Text(
+                                midiController.connectedDestinationName.map {
+                                    String(format: loc.t(.midiVUMeterStatusConnectedFormat), $0)
+                                } ?? loc.t(.midiVUMeterStatusNotConnected)
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
 
-                    Button(loc.t(.midiVUMeterCalibrateButton)) {
-                        MIDIPadVUMeterController.shared.runCalibrationSweep()
+                            Button(loc.t(.midiVUMeterCalibrateButton)) {
+                                MIDIPadVUMeterController.shared.runCalibrationSweep()
+                            }
+                            .disabled(midiController.connectedDestinationName == nil)
+
+                            Text(loc.t(.midiVUMeterCalibrateHint))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
-                    .disabled(midiController.connectedDestinationName == nil)
 
-                    Text(loc.t(.midiVUMeterCalibrateHint))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+                    Divider()
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle(loc.t(.midiInputToggleLabel), isOn: $midiInput.enabled)
+
+                        Text(loc.t(.midiInputHint))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        midiLegend
+                            .padding(.top, 4)
+                    }
                 }
+                .padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } label: {
+                Text(loc.t(.midiSectionTitle))
+                    .font(.subheadline)
             }
-
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Leyenda de qué hace cada control del teclado (ver `MIDIInputController`).
+    private var midiLegend: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(loc.t(.midiLegendTitle))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
+                legendRow("Knob", .midiLegendAppVolume)
+                legendRow("Fader", .midiLegendSystemVolume)
+                legendRow("Play", .midiLegendPlayPause)
+                legendRow("Stop", .midiLegendStop)
+                legendRow("◀◀", .midiLegendPrevious)
+                legendRow("▶▶", .midiLegendNext)
+            }
+            .font(.caption)
+        }
+    }
+
+    private func legendRow(_ control: String, _ function: LKey) -> some View {
+        GridRow {
+            Text(control)
+                .fontWeight(.medium)
+            Text(loc.t(function))
+                .foregroundStyle(.secondary)
+        }
     }
 }
