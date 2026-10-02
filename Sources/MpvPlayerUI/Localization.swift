@@ -62,6 +62,10 @@ enum LKey {
     case midiVUMeterToggleLabel, midiVUMeterHint
     case midiVUMeterCalibrateButton, midiVUMeterCalibrateHint
     case midiVUMeterStatusConnectedFormat, midiVUMeterStatusNotConnected
+    case midiInputToggleLabel, midiInputHint
+    case midiSectionTitle, midiLegendTitle
+    case midiLegendAppVolume, midiLegendSystemVolume, midiLegendPlayPause
+    case midiLegendStop, midiLegendPrevious, midiLegendNext
 }
 
 /// Sistema de idioma propio (en vez de `Localizable.strings`/`Bundle`) para
@@ -340,5 +344,21 @@ final class LocalizationManager: ObservableObject {
             "No se detecta ningún Oxygen Pro conectado.",
             "No connected Oxygen Pro detected."
         ),
+        .midiInputToggleLabel: (
+            "Controlar volumen y reproducción desde el teclado",
+            "Control volume and playback from the keyboard"
+        ),
+        .midiInputHint: (
+            "Funciona en modo preset y DAW, así que es compatible con el vúmetro en los LEDs. Tras cambiar de modo, confirma el submodo en el teclado o los botones no responderán.",
+            "Works in both preset and DAW mode, so it's compatible with the LED VU meter. After switching modes, confirm the submode on the keyboard or the buttons won't respond."
+        ),
+        .midiSectionTitle: ("Controlador de teclado MIDI", "MIDI Keyboard controller"),
+        .midiLegendTitle: ("Funciones disponibles", "Available functions"),
+        .midiLegendAppVolume: ("Volumen de la app", "App volume"),
+        .midiLegendSystemVolume: ("Volumen general de macOS", "macOS master volume"),
+        .midiLegendPlayPause: ("Play / pausa", "Play / pause"),
+        .midiLegendStop: ("Detener", "Stop"),
+        .midiLegendPrevious: ("Pista anterior", "Previous track"),
+        .midiLegendNext: ("Pista siguiente", "Next track"),
     ]
 }

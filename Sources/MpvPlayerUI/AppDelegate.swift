@@ -61,6 +61,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // informa en vez de autoactualizar) y AboutView (dónde se muestra).
         UpdateChecker.shared.checkForUpdatesInBackground()
 
+        MIDIInputController.shared.onVolumeChange = { [weak self] volume in
+            self?.viewModel.volume = volume
+        }
+        MIDIInputController.shared.onTransport = { [weak self] action in
+            guard let viewModel = self?.viewModel else { return }
+            switch action {
+            case .playPause: viewModel.togglePrimaryPlayPause()
+            case .stop: viewModel.stop()
+            case .previous: viewModel.playPrevious()
+            case .next: viewModel.playNext()
+            }
+        }
+        MIDIInputController.shared.start()
+
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
             button.image = NSImage(
