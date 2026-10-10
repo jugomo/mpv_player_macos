@@ -12,12 +12,23 @@ struct PlaylistView: View {
     var isDocked: Bool = false
     var onItemPlayed: (() -> Void)?
     var onToggleDocked: (() -> Void)?
+    /// Cierra la playlist; solo se muestra en modo acoplado, que no tiene
+    /// barra de título propia con su botón de cierre.
+    var onClose: (() -> Void)?
     @State private var errorMessage: String?
     @State private var showClearConfirmation = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
+                if isDocked, let onClose {
+                    Button(action: onClose) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(loc.t(.hidePlaylistTooltip))
+                }
                 Text(loc.t(.playlistTitle))
                     .font(.headline)
                 Spacer()

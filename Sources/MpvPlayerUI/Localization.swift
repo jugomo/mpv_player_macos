@@ -46,6 +46,7 @@ enum LKey {
     case showDescriptionTooltip
     case dockPlaylistTooltip, undockPlaylistTooltip
     case showPlaylistTooltip, hidePlaylistTooltip
+    case repeatOffTooltip, repeatAllTooltip, repeatOneTooltip
     case downloadTooltip, downloadMp3Tooltip, cancelDownloadTooltip
     case revealInFinderTooltip, retryDownloadTooltip
     case downloadNeedsYtdlp, downloadNeedsFfmpeg, downloadFailedGeneric
@@ -256,6 +257,15 @@ final class LocalizationManager: ObservableObject {
         .undockPlaylistTooltip: ("Desacoplar a ventana flotante", "Undock to a floating window"),
         .showPlaylistTooltip: ("Mostrar playlist", "Show playlist"),
         .hidePlaylistTooltip: ("Ocultar playlist", "Hide playlist"),
+        .repeatOffTooltip: (
+            "Repetir: desactivado (solo audio)", "Repeat: off (audio only)"
+        ),
+        .repeatAllTooltip: (
+            "Repetir: todas (solo audio)", "Repeat: all (audio only)"
+        ),
+        .repeatOneTooltip: (
+            "Repetir: una (solo audio)", "Repeat: one (audio only)"
+        ),
 
         .downloadTooltip: (
             "Descargar vídeo con la calidad seleccionada",

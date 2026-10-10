@@ -323,6 +323,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             onToggleDocked: { [weak self] in
                 guard let self else { return }
                 self.showPlaylistWindow(docked: !self.isPlaylistDocked)
+            },
+            onClose: { [weak self] in
+                self?.hidePlaylistWindow()
+                PlaybackWindowSettingsManager.shared.playlistVisible = false
             }
         )
     }

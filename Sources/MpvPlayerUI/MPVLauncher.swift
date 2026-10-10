@@ -191,6 +191,9 @@ private struct LoadRequest {
     let urlString: String
     let quality: VideoQuality
     let volume: Double
+    /// `true` para repetir indefinidamente el archivo cargado (modo
+    /// "repetir una", ver `PlayerViewModel.repeatMode`).
+    let loopFile: Bool
     let ytdlpPath: String?
     let onPlaybackEnded: () -> Void
     let onPauseChanged: (Bool) -> Void
@@ -270,6 +273,7 @@ enum MPVLauncher {
         mpvPath: String,
         ytdlpPath: String?,
         volume: Double = 100,
+        loopFile: Bool = false,
         onPlaybackEnded: (() -> Void)? = nil,
         onPauseChanged: ((Bool) -> Void)? = nil,
         onTitleResolved: ((String) -> Void)? = nil,
@@ -301,6 +305,7 @@ enum MPVLauncher {
             urlString: trimmed,
             quality: quality,
             volume: volume,
+            loopFile: loopFile,
             ytdlpPath: ytdlpPath,
             onPlaybackEnded: { onPlaybackEnded?() },
             onPauseChanged: { onPauseChanged?($0) },
@@ -582,6 +587,7 @@ enum MPVLauncher {
     /// un proceso nuevo.
     private static func applySessionSettings(client: MPVIPCClient, request: LoadRequest) {
         client.send(command: ["set_property", "volume", Int(request.volume.rounded())])
+        client.send(command: ["set_property", "loop-file", request.loopFile ? "inf" : "no"])
         client.send(command: ["set_property", "ontop", PlaybackWindowSettingsManager.shared.alwaysOnTop])
         client.send(command: ["set_property", "demuxer-readahead-secs", Int(CacheSettingsManager.shared.effectiveDurationSeconds)])
         // YouTube exige cada vez más un "PO Token" antes de servir el
@@ -700,6 +706,14 @@ enum MPVLauncher {
     /// el volumen del sistema, así que solo afecta a esta reproducción.
     static func setVolume(_ volume: Double) {
         currentClient()?.send(command: ["set_property", "volume", volume])
+    }
+
+    /// Activa/desactiva la repetición indefinida del archivo en curso
+    /// (`loop-file`) a través del IPC server, para que un cambio del modo
+    /// repetir surta efecto sin recargar la pista. No hace nada si no hay
+    /// ningún mpv en marcha.
+    static func setLoopFile(_ enabled: Bool) {
+        currentClient()?.send(command: ["set_property", "loop-file", enabled ? "inf" : "no"])
     }
 
     /// Devuelve el cliente IPC de la sesión que esté realmente en marcha.

@@ -39,6 +39,17 @@ struct PlayerView: View {
                         .frame(maxWidth: .infinity, alignment: .center)
 
                     HStack(spacing: 12) {
+                        Button {
+                            viewModel.onOpenPlaylistRequested?()
+                        } label: {
+                            Image(systemName: viewModel.isPlaylistVisible ? "list.bullet.circle.fill" : "list.bullet")
+                                .font(.subheadline)
+                                .foregroundStyle(viewModel.isPlaylistVisible ? Color.accentColor : Color.primary)
+                        }
+                        .buttonStyle(.plain)
+                        .help(viewModel.isPlaylistVisible ? loc.t(.hidePlaylistTooltip) : loc.t(.showPlaylistTooltip))
+                        .accessibilityLabel(loc.t(.playlist))
+
                         Spacer()
                         Button {
                             openLocalFile()
@@ -156,15 +167,6 @@ struct PlayerView: View {
     @ViewBuilder
     private var controlsRow: some View {
         HStack(alignment: .top, spacing: 10) {
-            Button {
-                viewModel.onOpenPlaylistRequested?()
-            } label: {
-                Image(systemName: viewModel.isPlaylistVisible ? "list.bullet.circle.fill" : "list.bullet")
-                    .foregroundStyle(viewModel.isPlaylistVisible ? Color.accentColor : Color.primary)
-            }
-            .buttonStyle(.borderless)
-            .help(viewModel.isPlaylistVisible ? loc.t(.hidePlaylistTooltip) : loc.t(.showPlaylistTooltip))
-
             if viewModel.currentlyPlayingHasVideo {
                 Button {
                     viewModel.toggleFullscreen()
@@ -182,9 +184,9 @@ struct PlayerView: View {
                 }
                 .buttonStyle(.borderless)
                 .help(loc.t(.alwaysOnTopTooltip))
-            }
 
-            Divider().frame(height: 14).padding(.horizontal, 2)
+                Divider().frame(height: 14).padding(.horizontal, 2)
+            }
 
             Button {
                 viewModel.playPrevious()
@@ -222,6 +224,20 @@ struct PlayerView: View {
             .disabled(!viewModel.status.isReady || !viewModel.canPlayNext)
             .help(loc.t(.nextTooltip))
 
+            // Repetir solo aplica a "Solo audio" (ver
+            // `PlayerViewModel.repeatMode`): con vídeo se oculta, igual que
+            // los controles de ventana se ocultan en solo audio.
+            if !viewModel.currentlyPlayingHasVideo {
+                Button {
+                    viewModel.cycleRepeatMode()
+                } label: {
+                    Image(systemName: viewModel.repeatMode == .one ? "repeat.1" : "repeat")
+                        .foregroundStyle(viewModel.repeatMode == .off ? Color.primary : Color.accentColor)
+                }
+                .buttonStyle(.borderless)
+                .help(repeatTooltip)
+            }
+
             HStack(spacing: 4) {
                 Image(systemName: "speaker.wave.2.fill")
                     .font(.caption2)
@@ -229,6 +245,14 @@ struct PlayerView: View {
                 Slider(value: $viewModel.volume, in: 0...100)
             }
             .help(loc.t(.volumeTooltip))
+        }
+    }
+
+    private var repeatTooltip: String {
+        switch viewModel.repeatMode {
+        case .off: return loc.t(.repeatOffTooltip)
+        case .all: return loc.t(.repeatAllTooltip)
+        case .one: return loc.t(.repeatOneTooltip)
         }
     }
 
