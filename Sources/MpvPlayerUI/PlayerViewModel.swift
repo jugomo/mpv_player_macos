@@ -21,6 +21,45 @@ final class PlayerViewModel: ObservableObject {
         }
     }
 
+    /// Modo repetir, al estilo de cualquier app de audio: cada clic en el
+    /// botón pasa de desactivado → todas → una → desactivado (ver
+    /// `cycleRepeatMode`). Solo afecta a pistas en modo "Solo audio" (vídeos
+    /// en solo audio o archivos de audio locales); con vídeo se ignora y se
+    /// mantiene el avance de siempre. Persistido entre sesiones.
+    enum RepeatMode: String {
+        case off, all, one
+    }
+
+    @Published private(set) var repeatMode: RepeatMode =
+        RepeatMode(rawValue: UserDefaults.standard.string(forKey: PlayerViewModel.repeatModeKey) ?? "") ?? .off
+    {
+        didSet {
+            UserDefaults.standard.set(repeatMode.rawValue, forKey: Self.repeatModeKey)
+            MPVLauncher.setLoopFile(shouldLoopCurrentFile)
+        }
+    }
+    private static let repeatModeKey = "repeatMode"
+
+    func cycleRepeatMode() {
+        switch repeatMode {
+        case .off: repeatMode = .all
+        case .all: repeatMode = .one
+        case .one: repeatMode = .off
+        }
+    }
+
+    /// `true` si el ítem cargado en mpv se reproduce en modo "Solo audio".
+    var isCurrentlyPlayingAudioOnly: Bool {
+        currentlyPlayingItemID != nil && !currentlyPlayingHasVideo
+    }
+
+    /// "Repetir una" se delega en mpv (`loop-file`) en vez de recargar la
+    /// pista al terminar: así no hay corte entre vueltas ni se vuelve a
+    /// disparar el toast de título / cierre de ventana de `play()`.
+    private var shouldLoopCurrentFile: Bool {
+        repeatMode == .one && isCurrentlyPlayingAudioOnly
+    }
+
     /// Carátula del ítem en reproducción, recalculada solo al cambiar de
     /// ítem (ver `refreshCurrentlyPlayingThumbnail`) en vez de en cada
     /// acceso: para un archivo local puede implicar leer sus metadatos con
@@ -242,7 +281,7 @@ final class PlayerViewModel: ObservableObject {
 
         let shouldAutoAdvance = !didStopExplicitly
         didStopExplicitly = false
-        if shouldAutoAdvance, playNext() {
+        if shouldAutoAdvance, advanceAfterTrackEnded() {
             // `playNext()` ya deja listo todo el estado "en marcha"
             // (currentlyPlayingItemID, isPaused, Now Playing, etc.) para el
             // ítem siguiente; no hay nada más que limpiar aquí.
@@ -270,6 +309,31 @@ final class PlayerViewModel: ObservableObject {
         if showVUMeters {
             scheduleVUMeterHide()
         }
+    }
+
+    /// Decide qué reproducir cuando la pista actual termina sola. Con vídeo
+    /// se mantiene el avance de siempre (`playNext`, que da la vuelta a la
+    /// playlist); en "Solo audio" manda `repeatMode`: desactivado se detiene
+    /// tras el último ítem, "todas" vuelve al primero, y "una" repite la
+    /// misma (normalmente ya la repite mpv vía `loop-file` sin llegar aquí;
+    /// esto cubre solo el caso de que no se aplicara a tiempo).
+    private func advanceAfterTrackEnded() -> Bool {
+        guard isCurrentlyPlayingAudioOnly,
+              let id = currentlyPlayingItemID,
+              let index = playlistStore.items.firstIndex(where: { $0.id == id })
+        else { return playNext() }
+
+        let items = playlistStore.items
+        switch repeatMode {
+        case .one:
+            play(item: items[index])
+        case .all:
+            play(item: items[(index + 1) % items.count])
+        case .off:
+            guard index + 1 < items.count else { return false }
+            play(item: items[index + 1])
+        }
+        return true
     }
 
     private func scheduleVUMeterHide() {
@@ -556,6 +620,7 @@ final class PlayerViewModel: ObservableObject {
                 mpvPath: mpvPath,
                 ytdlpPath: status.ytdlpPath,
                 volume: volume,
+                loopFile: repeatMode == .one && effectiveQuality == .audioOnly,
                 onPlaybackEnded: { [weak self] in self?.handlePlaybackEnded(token: requestToken) },
                 onPauseChanged: { [weak self] paused in self?.handlePauseChanged(paused) },
                 onTitleResolved: { [weak self] title in self?.handleTitleResolved(title) },
